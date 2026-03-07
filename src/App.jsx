@@ -1,11 +1,55 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback, useContext, createContext } from "react";
 
+// ── Inject responsive global styles ──────────────────────────────────────────
+const GLOBAL_CSS = `
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body, #root { height: 100%; margin: 0; padding: 0; }
+  body { overflow-x: hidden; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #2a3040; border-radius: 3px; }
+  input[type=range] { -webkit-appearance: none; appearance: none; }
+  input[type=range]:focus { outline: none; }
+
+  /* Responsive grid helpers */
+  .fc-grid-2  { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .fc-grid-3  { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
+  .fc-grid-5  { display: grid; grid-template-columns: repeat(5,1fr); gap: 10px; }
+  .fc-health  { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
+  .fc-runway4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; }
+  .fc-analysis{ display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  @media (max-width: 1100px) {
+    .fc-grid-5  { grid-template-columns: repeat(3,1fr); }
+  }
+  @media (max-width: 860px) {
+    .fc-grid-2  { grid-template-columns: 1fr; }
+    .fc-grid-3  { grid-template-columns: 1fr 1fr; }
+    .fc-grid-5  { grid-template-columns: 1fr 1fr; }
+    .fc-health  { grid-template-columns: 1fr 1fr; }
+    .fc-runway4 { grid-template-columns: 1fr 1fr; }
+    .fc-analysis{ grid-template-columns: 1fr; }
+  }
+  @media (max-width: 560px) {
+    .fc-grid-2  { grid-template-columns: 1fr; }
+    .fc-grid-3  { grid-template-columns: 1fr; }
+    .fc-grid-5  { grid-template-columns: 1fr; }
+    .fc-health  { grid-template-columns: 1fr; }
+    .fc-runway4 { grid-template-columns: 1fr 1fr; }
+    .fc-analysis{ grid-template-columns: 1fr; }
+  }
+`;
+function GlobalStyles() {
+  return <style dangerouslySetInnerHTML={{ __html: GLOBAL_CSS }} />;
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // SUPABASE ADAPTER
 // ══════════════════════════════════════════════════════════════════════════════
 const MOCK_MODE     = true;
 const SUPABASE_URL  = "https://cjgazhrxexjvztkzaujk.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNqZ2F6aHJ4ZXhqdnp0a3phdWprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5MTY0OTgsImV4cCI6MjA4ODQ5MjQ5OH0.2CB4zj-1z5RrS728vM87mq4rM1vnnxuahqE09HGuOXM";
+
 
 const MOCK_STORE_KEY = "fincommand_mock_v1";
 function getMockStore() { try { return JSON.parse(localStorage.getItem(MOCK_STORE_KEY) || "{}"); } catch { return {}; } }
@@ -191,21 +235,21 @@ const gridLines = (ceil,n) => Array.from({length:n},(_,i)=>ceil*((i+1)/n));
 // ══════════════════════════════════════════════════════════════════════════════
 function Lbl({ children, color }) {
   const T = useTheme();
-  return <div style={{fontSize:9,letterSpacing:2,textTransform:"uppercase",color:color||T.muted,fontFamily:"monospace",marginBottom:5}}>{children}</div>;
+  return <div style={{fontSize:10,letterSpacing:1.5,textTransform:"uppercase",color:color||T.muted,marginBottom:6}}>{children}</div>;
 }
 
 function Pill({ label, color }) {
   const c = color;
-  return <span style={{fontSize:9,letterSpacing:1.5,textTransform:"uppercase",color:c,background:c+"33",padding:"2px 8px",borderRadius:20,fontFamily:"monospace",fontWeight:700,whiteSpace:"nowrap"}}>{label}</span>;
+  return <span style={{fontSize:10,letterSpacing:1.5,textTransform:"uppercase",color:c,background:c+"33",padding:"2px 8px",borderRadius:20,fontFamily:"monospace",fontWeight:700,whiteSpace:"nowrap"}}>{label}</span>;
 }
 
 function StatCard({ label, value, sub, color, size, bg }) {
   const T = useTheme();
   return (
-    <div style={{background:bg||T.card,border:"1px solid "+T.border,borderRadius:10,padding:"14px 16px"}}>
-      <Lbl>{label}</Lbl>
-      <div style={{fontSize:size||22,fontFamily:"monospace",fontWeight:700,color:color||T.text,lineHeight:1.1}}>{value}</div>
-      {sub&&<div style={{fontSize:10,color:T.muted,fontFamily:"monospace",marginTop:5,lineHeight:1.5}}>{sub}</div>}
+    <div style={{background:bg||T.card,border:"1px solid "+T.border,borderRadius:12,padding:"16px 18px"}}>
+      <div style={{fontSize:10,letterSpacing:1.5,textTransform:"uppercase",color:T.muted,marginBottom:7}}>{label}</div>
+      <div style={{fontSize:size||24,fontFamily:"monospace",fontWeight:700,color:color||T.text,lineHeight:1.1}}>{value}</div>
+      {sub&&<div style={{fontSize:11,color:T.muted,marginTop:6,lineHeight:1.5}}>{sub}</div>}
     </div>
   );
 }
@@ -223,7 +267,7 @@ function Toggle({ checked, onChange, label, sublabel, color }) {
       </div>
       <div>
         <div style={{fontSize:11,color:checked?T.text:T.muted,fontFamily:"monospace",fontWeight:checked?700:400}}>{label}</div>
-        {sublabel&&<div style={{fontSize:9,color:T.muted,fontFamily:"monospace",marginTop:1}}>{sublabel}</div>}
+        {sublabel&&<div style={{fontSize:11,color:T.muted,fontFamily:"monospace",marginTop:1}}>{sublabel}</div>}
       </div>
     </div>
   );
@@ -238,7 +282,7 @@ function SliderRow({ label, value, min, max, step, onChange, format, color, subl
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:7}}>
         <div>
           <span style={{fontSize:12,color:T.text,fontFamily:"monospace"}}>{label}</span>
-          {sublabel&&<span style={{fontSize:10,color:T.muted,fontFamily:"monospace",marginLeft:8}}>{sublabel}</span>}
+          {sublabel&&<span style={{fontSize:11,color:T.muted,fontFamily:"monospace",marginLeft:8}}>{sublabel}</span>}
         </div>
         <span style={{fontSize:18,color:c,fontFamily:"monospace",fontWeight:700}}>{format(value)}</span>
       </div>
@@ -248,7 +292,7 @@ function SliderRow({ label, value, min, max, step, onChange, format, color, subl
           style={{position:"absolute",top:"50%",transform:"translateY(-50%)",width:"100%",opacity:0,cursor:"pointer",height:18,margin:0}} />
         <div style={{position:"absolute",top:"50%",transform:"translateY(-50%)",left:"calc("+w+"% - 7px)",width:14,height:14,borderRadius:"50%",background:c,border:"2px solid "+T.bg,boxShadow:"0 0 10px "+c+"66",pointerEvents:"none"}} />
       </div>
-      <div style={{display:"flex",justifyContent:"space-between",marginTop:3,fontSize:9,color:T.muted+"88",fontFamily:"monospace"}}>
+      <div style={{display:"flex",justifyContent:"space-between",marginTop:3,fontSize:11,color:T.muted+"88",fontFamily:"monospace"}}>
         <span>{format(min)}</span><span>{format(max)}</span>
       </div>
     </div>
@@ -341,10 +385,10 @@ function EditableTable({ title, icon, items, setItems, accentColor, sliderMax })
                   {item.excluded&&<Pill label="excluded" color={T.muted} />}
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  {!item.excluded&&<span style={{fontSize:10,color:T.muted,fontFamily:"monospace"}}>{pct(share)}</span>}
+                  {!item.excluded&&<span style={{fontSize:11,color:T.muted,fontFamily:"monospace"}}>{pct(share)}</span>}
                   <span style={{fontSize:14,color:item.excluded?T.muted:rowCol,fontFamily:"monospace",fontWeight:700,minWidth:70,textAlign:"right"}}>{item.amount.toLocaleString()}</span>
                   {item.auto
-                    ?<span style={{fontSize:10,color:T.muted,padding:"2px 7px",border:"1px solid "+T.border,borderRadius:4,fontFamily:"monospace"}}>auto</span>
+                    ?<span style={{fontSize:11,color:T.muted,padding:"2px 7px",border:"1px solid "+T.border,borderRadius:4,fontFamily:"monospace"}}>auto</span>
                     :<>
                       <button onClick={()=>tog(item.id)} style={{background:"transparent",border:"1px solid "+T.border,color:T.muted,cursor:"pointer",fontSize:10,padding:"2px 7px",borderRadius:4,fontFamily:"monospace"}}>{item.excluded?"on":"off"}</button>
                       {item.custom&&<button onClick={()=>del(item.id)} style={{background:"transparent",border:"none",color:T.muted,cursor:"pointer",fontSize:16,padding:"0 2px",lineHeight:1}}>×</button>}
@@ -359,7 +403,7 @@ function EditableTable({ title, icon, items, setItems, accentColor, sliderMax })
                 </div>
               )}
               {!item.excluded&&item.auto&&<MiniBar value={item.amount} max={sMax} color={rowCol+"44"} />}
-              {item.sub&&<div style={{fontSize:9,color:T.muted,fontFamily:"monospace",marginTop:3,paddingLeft:16}}>{item.sub}</div>}
+              {item.sub&&<div style={{fontSize:11,color:T.muted,fontFamily:"monospace",marginTop:3,paddingLeft:16}}>{item.sub}</div>}
             </div>
           );
         })}
@@ -420,7 +464,7 @@ function SavingsSection({ buckets, setBuckets }) {
                   {b.excluded&&<Pill label="excluded" color={T.muted} />}
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  {!b.excluded&&<span style={{fontSize:10,color:T.muted,fontFamily:"monospace"}}>{pct(share)}</span>}
+                  {!b.excluded&&<span style={{fontSize:11,color:T.muted,fontFamily:"monospace"}}>{pct(share)}</span>}
                   <span style={{fontSize:14,color:b.excluded?T.muted:col,fontFamily:"monospace",fontWeight:700,minWidth:70,textAlign:"right"}}>{b.amount.toLocaleString()}</span>
                   <button onClick={()=>tog(b.id)} style={{background:"transparent",border:"1px solid "+T.border,color:T.muted,cursor:"pointer",fontSize:10,padding:"2px 7px",borderRadius:4,fontFamily:"monospace"}}>{b.excluded?"on":"off"}</button>
                   <button onClick={()=>del(b.id)} style={{background:"transparent",border:"none",color:T.muted,cursor:"pointer",fontSize:16,padding:"0 2px",lineHeight:1}}>×</button>
@@ -497,18 +541,18 @@ function ProjChart({ monthlySavings, netBonus, includeBonus, intervalMode, fmtK 
                   {isHov&&(
                     <div style={{position:"absolute",bottom:barH+10,left:"50%",transform:"translateX(-50%)",background:T.surface,
                       border:"1px solid "+(hit?T.amber:T.green)+"88",borderRadius:8,padding:"10px 12px",zIndex:10,whiteSpace:"nowrap",boxShadow:"0 4px 20px #00000066",pointerEvents:"none"}}>
-                      <div style={{fontSize:9,color:T.muted,fontFamily:"monospace",letterSpacing:1.5,textTransform:"uppercase",marginBottom:7}}>{mode.fmt(d.y)}{hit?"  ✓ target":""}</div>
+                      <div style={{fontSize:11,color:T.muted,fontFamily:"monospace",letterSpacing:1.5,textTransform:"uppercase",marginBottom:7}}>{mode.fmt(d.y)}{hit?"  ✓ target":""}</div>
                       <div style={{display:"flex",justifyContent:"space-between",gap:20,marginBottom:5,alignItems:"baseline"}}>
-                        <div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:8,height:8,borderRadius:2,background:hit?T.amber:T.green}} /><span style={{fontSize:10,color:T.muted,fontFamily:"monospace"}}>Total</span></div>
+                        <div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:8,height:8,borderRadius:2,background:hit?T.amber:T.green}} /><span style={{fontSize:11,color:T.muted,fontFamily:"monospace"}}>Total</span></div>
                         <span style={{fontSize:14,color:hit?T.amber:T.green,fontFamily:"monospace",fontWeight:700}}>{fmtK(d.total)}</span>
                       </div>
                       <div style={{borderTop:"1px solid "+T.border,margin:"7px 0"}} />
                       <div style={{display:"flex",justifyContent:"space-between",gap:20,marginBottom:4,alignItems:"baseline"}}>
-                        <div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:8,height:8,borderRadius:2,background:T.blue}} /><span style={{fontSize:10,color:T.muted,fontFamily:"monospace"}}>Investments</span></div>
-                        <div><span style={{fontSize:12,color:T.blue,fontFamily:"monospace",fontWeight:700}}>{fmtK(d.inv)}</span><span style={{fontSize:9,color:T.muted,fontFamily:"monospace",marginLeft:5}}>{invPct}%</span></div>
+                        <div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:8,height:8,borderRadius:2,background:T.blue}} /><span style={{fontSize:11,color:T.muted,fontFamily:"monospace"}}>Investments</span></div>
+                        <div><span style={{fontSize:12,color:T.blue,fontFamily:"monospace",fontWeight:700}}>{fmtK(d.inv)}</span><span style={{fontSize:11,color:T.muted,fontFamily:"monospace",marginLeft:5}}>{invPct}%</span></div>
                       </div>
                       <div style={{display:"flex",justifyContent:"space-between",gap:20,alignItems:"baseline"}}>
-                        <div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:8,height:8,borderRadius:2,background:T.purple}} /><span style={{fontSize:10,color:T.muted,fontFamily:"monospace"}}>Other</span></div>
+                        <div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:8,height:8,borderRadius:2,background:T.purple}} /><span style={{fontSize:11,color:T.muted,fontFamily:"monospace"}}>Other</span></div>
                         <span style={{fontSize:12,color:T.purple,fontFamily:"monospace",fontWeight:700}}>{fmtK(nonInv)}</span>
                       </div>
                       <div style={{marginTop:9,height:4,borderRadius:2,background:T.faint,overflow:"hidden",display:"flex"}}>
@@ -536,7 +580,7 @@ function ProjChart({ monthlySavings, netBonus, includeBonus, intervalMode, fmtK 
         {[{l:"Investments",c:T.blue},{l:"Other assets",c:T.purple},{l:"Total",c:T.green},{l:"Target",c:T.amber}].map(x=>(
           <div key={x.l} style={{display:"flex",alignItems:"center",gap:5}}>
             <div style={{width:8,height:8,borderRadius:2,background:x.c}} />
-            <span style={{fontSize:10,color:T.muted,fontFamily:"monospace"}}>{x.l}</span>
+            <span style={{fontSize:11,color:T.muted,fontFamily:"monospace"}}>{x.l}</span>
           </div>
         ))}
       </div>
@@ -580,16 +624,16 @@ function HealthScore({ savingsRate, housingPct, totalExpenses, netIncome }) {
     {label:"Expense Efficiency", val:100-expRatio*100, score:expRatio<.65?"Efficient":expRatio<.80?"Moderate":"Inflated",  color:expRatio<.65?T.green:expRatio<.80?T.amber:T.red,       bench:"Target: <70% of net", detail:pct(expRatio*100)+" expenses-to-income"},
   ];
   return (
-    <div style={{background:T.card,border:"1px solid "+T.border,borderRadius:14,padding:"20px 22px",marginBottom:14}}>
+    <div style={{background:T.card,border:"1px solid "+T.border,borderRadius:14,padding:"20px 22px",marginBottom:16}}>
       <Lbl color={T.purple}>Financial Health Assessment</Lbl>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginTop:10}}>
+      <div className="fc-health" style={{marginTop:12}}>
         {cards.map(s=>(
-          <div key={s.label} style={{background:T.surface,border:"1px solid "+s.color+"44",borderRadius:10,padding:14}}>
-            <div style={{fontSize:10,color:T.muted,fontFamily:"monospace",marginBottom:6}}>{s.label}</div>
-            <div style={{fontSize:18,color:s.color,fontFamily:"monospace",fontWeight:700,marginBottom:4}}>{s.score}</div>
-            <div style={{fontSize:11,color:s.color,fontFamily:"monospace",marginBottom:6}}>{s.detail}</div>
+          <div key={s.label} style={{background:T.surface,border:"1px solid "+s.color+"44",borderRadius:12,padding:16}}>
+            <div style={{fontSize:11,color:T.muted,marginBottom:7}}>{s.label}</div>
+            <div style={{fontSize:20,color:s.color,fontFamily:"monospace",fontWeight:700,marginBottom:5}}>{s.score}</div>
+            <div style={{fontSize:12,color:s.color,marginBottom:7}}>{s.detail}</div>
             <MiniBar value={Math.abs(s.val)} max={100} color={s.color} />
-            <div style={{fontSize:9,color:T.muted,fontFamily:"monospace",lineHeight:1.5,marginTop:6}}>{s.bench}</div>
+            <div style={{fontSize:11,color:T.muted,lineHeight:1.5,marginTop:7}}>{s.bench}</div>
           </div>
         ))}
       </div>
@@ -611,41 +655,41 @@ function LandingPage({ onGetStarted }) {
     {icon:"🎨",title:"5 Colour Themes",          desc:"Terminal, Spring, Autumn, Kente — pick what feels right."},
   ];
   return (
-    <div style={{minHeight:"100vh",background:T.bg,color:T.text,fontFamily:"'Courier New',monospace",display:"flex",flexDirection:"column"}}>
-      <nav style={{padding:"20px 40px",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1px solid "+T.border}}>
-        <div>
-          <span style={{fontSize:18,fontWeight:700,color:T.accent,letterSpacing:-0.5}}>FinCommand</span>
-          <span style={{fontSize:10,color:T.muted,marginLeft:10,letterSpacing:2,textTransform:"uppercase"}}>Personal Finance OS</span>
-          {MOCK_MODE&&<span style={{marginLeft:12,fontSize:9,color:T.amber,background:T.amber+"22",padding:"2px 8px",borderRadius:10,fontFamily:"monospace"}}>DEMO MODE</span>}
+    <div style={{minHeight:"100vh",background:T.bg,color:T.text,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif",display:"flex",flexDirection:"column"}}>
+      <nav style={{padding:"18px clamp(20px,5vw,60px)",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1px solid "+T.border}}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:20,fontWeight:700,color:T.accent,letterSpacing:-0.5,fontFamily:"monospace"}}>FinCommand</span>
+          <span style={{fontSize:11,color:T.muted,letterSpacing:2,textTransform:"uppercase",display:"none"}}></span>
+          {MOCK_MODE&&<span style={{fontSize:10,color:T.amber,background:T.amber+"22",padding:"3px 10px",borderRadius:10,fontFamily:"monospace"}}>DEMO</span>}
         </div>
-        <button onClick={onGetStarted} style={{background:"transparent",border:"1px solid "+T.accent+"66",color:T.accent,borderRadius:8,padding:"8px 20px",cursor:"pointer",fontSize:11,fontFamily:"monospace",letterSpacing:1.5}}>Sign In</button>
+        <button onClick={onGetStarted} style={{background:"transparent",border:"1px solid "+T.accent+"66",color:T.accent,borderRadius:8,padding:"9px 22px",cursor:"pointer",fontSize:12,letterSpacing:1.2}}>Sign In</button>
       </nav>
-      <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"80px 40px",textAlign:"center",maxWidth:800,margin:"0 auto",width:"100%"}}>
-        <div style={{fontSize:9,letterSpacing:4,color:T.accent,textTransform:"uppercase",marginBottom:20}}>Personal Finance OS</div>
-        <h1 style={{fontSize:"clamp(32px,5vw,52px)",fontWeight:700,margin:"0 0 20px",letterSpacing:-1,lineHeight:1.1,color:T.text}}>
+      <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"clamp(48px,8vh,100px) clamp(20px,5vw,60px)",textAlign:"center",width:"100%"}}>
+        <div style={{fontSize:10,letterSpacing:4,color:T.accent,textTransform:"uppercase",marginBottom:24}}>Personal Finance OS</div>
+        <h1 style={{fontSize:"clamp(32px,6vw,56px)",fontWeight:700,margin:"0 0 22px",letterSpacing:-1.5,lineHeight:1.1,color:T.text,maxWidth:700}}>
           Your money.<br /><span style={{color:T.accent}}>Completely clear.</span>
         </h1>
-        <p style={{fontSize:14,color:T.muted,lineHeight:1.8,maxWidth:520,margin:"0 0 40px"}}>
+        <p style={{fontSize:"clamp(13px,1.5vw,16px)",color:T.muted,lineHeight:1.8,maxWidth:520,margin:"0 0 40px"}}>
           A professional-grade financial dashboard that speaks your country's tax language.
         </p>
         <div style={{display:"flex",gap:12,flexWrap:"wrap",justifyContent:"center"}}>
-          <button onClick={onGetStarted} style={{background:T.accent,border:"none",color:T.bg,borderRadius:10,padding:"14px 32px",cursor:"pointer",fontSize:13,fontFamily:"monospace",fontWeight:700,letterSpacing:1}}>Get Started — Free</button>
-          <button onClick={onGetStarted} style={{background:"transparent",border:"1px solid "+T.border,color:T.muted,borderRadius:10,padding:"14px 24px",cursor:"pointer",fontSize:13,fontFamily:"monospace",letterSpacing:1}}>Sign In</button>
+          <button onClick={onGetStarted} style={{background:T.accent,border:"none",color:T.bg,borderRadius:12,padding:"15px 36px",cursor:"pointer",fontSize:14,fontWeight:700,letterSpacing:0.5}}>Get Started — Free</button>
+          <button onClick={onGetStarted} style={{background:"transparent",border:"1px solid "+T.border,color:T.muted,borderRadius:12,padding:"15px 28px",cursor:"pointer",fontSize:14}}>Sign In</button>
         </div>
-        <div style={{marginTop:20,fontSize:9,color:T.muted,letterSpacing:1.5,textTransform:"uppercase"}}>US · UK · Canada · Australia · Germany</div>
+        <div style={{marginTop:24,fontSize:11,color:T.muted,letterSpacing:1.5,textTransform:"uppercase"}}>🇺🇸 US · 🇬🇧 UK · 🇨🇦 Canada · 🇦🇺 Australia · 🇩🇪 Germany</div>
       </div>
-      <div style={{padding:"60px 40px",maxWidth:1000,margin:"0 auto",width:"100%"}}>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:16}}>
+      <div style={{padding:"clamp(40px,6vh,80px) clamp(20px,5vw,60px)",width:"100%",maxWidth:1400,margin:"0 auto",boxSizing:"border-box"}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:18}}>
           {features.map(f=>(
-            <div key={f.title} style={{background:T.card,border:"1px solid "+T.border,borderRadius:12,padding:"20px 22px"}}>
-              <div style={{fontSize:24,marginBottom:10}}>{f.icon}</div>
-              <div style={{fontSize:12,fontWeight:700,color:T.text,marginBottom:8}}>{f.title}</div>
-              <div style={{fontSize:11,color:T.muted,lineHeight:1.7}}>{f.desc}</div>
+            <div key={f.title} style={{background:T.card,border:"1px solid "+T.border,borderRadius:14,padding:"22px 24px"}}>
+              <div style={{fontSize:28,marginBottom:12}}>{f.icon}</div>
+              <div style={{fontSize:14,fontWeight:700,color:T.text,marginBottom:9}}>{f.title}</div>
+              <div style={{fontSize:12,color:T.muted,lineHeight:1.8}}>{f.desc}</div>
             </div>
           ))}
         </div>
       </div>
-      <div style={{textAlign:"center",padding:"20px",fontSize:9,color:T.border}}>For personal planning purposes only · Not financial advice</div>
+      <div style={{textAlign:"center",padding:"20px",fontSize:10,color:T.border}}>For personal planning purposes only · Not financial advice</div>
     </div>
   );
 }
@@ -685,7 +729,7 @@ function AuthPage({ onBack, onAuthSuccess }) {
   const inputS={background:T.faint,border:"1px solid "+T.border,borderRadius:6,padding:"12px 14px",color:T.text,fontFamily:"monospace",fontSize:13,outline:"none",width:"100%",boxSizing:"border-box"};
 
   return (
-    <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:20,fontFamily:"'Courier New',monospace"}}>
+    <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:20,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif"}}>
       <button onClick={onBack} style={{position:"absolute",top:24,left:24,background:"transparent",border:"none",color:T.muted,cursor:"pointer",fontSize:11,fontFamily:"monospace",letterSpacing:1}}>← Back</button>
       <div style={{width:"100%",maxWidth:400}}>
         <div style={{textAlign:"center",marginBottom:32}}>
@@ -699,7 +743,7 @@ function AuthPage({ onBack, onAuthSuccess }) {
             Continue with Google
           </button>
           <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
-            <div style={{flex:1,height:1,background:T.border}} /><span style={{fontSize:9,color:T.muted,letterSpacing:2,textTransform:"uppercase"}}>or</span><div style={{flex:1,height:1,background:T.border}} />
+            <div style={{flex:1,height:1,background:T.border}} /><span style={{fontSize:11,color:T.muted,letterSpacing:2,textTransform:"uppercase"}}>or</span><div style={{flex:1,height:1,background:T.border}} />
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:20}}>
             <input placeholder="Email address" type="email" value={email} onChange={e=>setEmail(e.target.value)} style={inputS} />
@@ -750,7 +794,7 @@ function OnboardingPage({ user, onComplete }) {
   const inputS={background:T.faint,border:"1px solid "+T.border,borderRadius:6,padding:"12px 14px",color:T.text,fontFamily:"monospace",fontSize:13,outline:"none",width:"100%",boxSizing:"border-box"};
 
   return (
-    <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:20,fontFamily:"'Courier New',monospace"}}>
+    <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:20,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif"}}>
       <div style={{width:"100%",maxWidth:520}}>
         <div style={{display:"flex",gap:8,marginBottom:32,justifyContent:"center",flexWrap:"wrap"}}>
           {steps.map((s,i)=>(
@@ -773,7 +817,7 @@ function OnboardingPage({ user, onComplete }) {
                   <div key={code} onClick={()=>setCountry(code)} style={{background:country===code?T.accent+"18":T.surface,border:"1px solid "+(country===code?T.accent+"66":T.border),borderRadius:10,padding:"14px 16px",cursor:"pointer",transition:"all 0.15s"}}>
                     <div style={{fontSize:22,marginBottom:6}}>{c.flag}</div>
                     <div style={{fontSize:12,fontWeight:700,color:T.text}}>{c.name}</div>
-                    <div style={{fontSize:10,color:T.muted,marginTop:2}}>{c.currency} · {c.symbol}</div>
+                    <div style={{fontSize:11,color:T.muted,marginTop:2}}>{c.currency} · {c.symbol}</div>
                   </div>
                 ))}
               </div>
@@ -801,7 +845,7 @@ function OnboardingPage({ user, onComplete }) {
               <div style={{background:T.surface,borderRadius:10,padding:"14px 16px",marginTop:8}}>
                 <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:11,color:T.muted,fontFamily:"monospace"}}>Estimated net/mo</span><span style={{fontSize:16,color:T.green,fontFamily:"monospace",fontWeight:700}}>{cfg.symbol}{netSalary.toLocaleString()}</span></div>
                 <div style={{display:"flex",justifyContent:"space-between",marginTop:6}}><span style={{fontSize:11,color:T.muted,fontFamily:"monospace"}}>Effective tax rate</span><span style={{fontSize:12,color:T.amber,fontFamily:"monospace"}}>{effectiveRate}%</span></div>
-                <div style={{fontSize:9,color:T.muted,marginTop:8,lineHeight:1.6}}>{cfg.taxYearNote}</div>
+                <div style={{fontSize:11,color:T.muted,marginTop:8,lineHeight:1.6}}>{cfg.taxYearNote}</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:20}}>
                 <button onClick={()=>setStep(1)} style={{flex:1,background:T.faint,border:"1px solid "+T.border,color:T.muted,borderRadius:10,padding:"13px",cursor:"pointer",fontSize:12,fontFamily:"monospace"}}>← Back</button>
@@ -913,39 +957,39 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
   const cardS={background:T.card,border:"1px solid "+T.border,borderRadius:12,overflow:"hidden",marginBottom:14};
 
   return (
-    <div style={{minHeight:"100vh",background:T.bg,color:T.text,fontFamily:"'Courier New',monospace",padding:"24px 16px"}}>
-      <div style={{maxWidth:940,margin:"0 auto"}}>
+    <div style={{minHeight:"100vh",background:T.bg,color:T.text,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif",padding:"clamp(16px,3vw,32px) clamp(16px,4vw,48px)"}}>
+      <div style={{maxWidth:1400,margin:"0 auto"}}>
 
         {/* Header */}
-        <div style={{marginBottom:18,display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:10}}>
+        <div style={{marginBottom:20,display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}>
           <div>
-            <div style={{fontSize:9,letterSpacing:4,color:T.accent,textTransform:"uppercase",marginBottom:4}}>FinCommand · {cfg.flag} {cfg.name}</div>
-            <h1 style={{margin:0,fontSize:22,fontWeight:700,color:T.text,letterSpacing:-0.5}}>{profile?.name?profile.name+"'s ":""}Financial Dashboard</h1>
-            <p style={{margin:"3px 0 0",fontSize:10,color:T.muted}}>{cfg.currency} · {cfg.taxYearNote}</p>
+            <div style={{fontSize:11,letterSpacing:3,color:T.accent,textTransform:"uppercase",marginBottom:6,fontFamily:"monospace"}}>{cfg.flag} {cfg.name} · FinCommand</div>
+            <h1 style={{margin:0,fontSize:"clamp(20px,3vw,28px)",fontWeight:700,color:T.text,letterSpacing:-0.5,lineHeight:1.1}}>{profile?.name?profile.name+"'s ":""}Financial Dashboard</h1>
+            <p style={{margin:"6px 0 0",fontSize:12,color:T.muted}}>{cfg.currency} · {cfg.taxYearNote}</p>
           </div>
-          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
-            <div style={{fontSize:9,fontFamily:"monospace",letterSpacing:1.5,color:statusInfo.color,minHeight:13,transition:"color 0.3s"}}>{statusInfo.label}</div>
-            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8}}>
+            <div style={{fontSize:10,letterSpacing:1.5,color:statusInfo.color,minHeight:14,transition:"color 0.3s",fontFamily:"monospace"}}>{statusInfo.label}</div>
+            <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",justifyContent:"flex-end"}}>
               <ThemePicker current={themeId} onChange={onThemeChange} />
-              <span style={{fontSize:9,color:T.muted,fontFamily:"monospace"}}>{user?.email}</span>
-              <button onClick={onSignOut} style={{background:"transparent",border:"1px solid "+T.border+"66",color:T.muted,borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:10,fontFamily:"monospace"}}>Sign Out</button>
+              <span style={{fontSize:11,color:T.muted}}>{user?.email}</span>
+              <button onClick={onSignOut} style={{background:"transparent",border:"1px solid "+T.border+"66",color:T.muted,borderRadius:6,padding:"5px 12px",cursor:"pointer",fontSize:11}}>Sign Out</button>
               <div style={{textAlign:"right"}}>
-                <Lbl>Net Income</Lbl>
-                <div style={{fontSize:26,fontFamily:"monospace",fontWeight:700,color:T.green}}>{fmt(totalIncome)}</div>
+                <div style={{fontSize:11,color:T.muted,letterSpacing:2,textTransform:"uppercase",marginBottom:3}}>Net Income</div>
+                <div style={{fontSize:"clamp(22px,3vw,30px)",fontFamily:"monospace",fontWeight:700,color:T.green}}>{fmt(totalIncome)}</div>
               </div>
             </div>
           </div>
         </div>
 
         {/* Income controls */}
-        <div style={{background:T.card,border:"1px solid "+T.border,borderRadius:14,padding:"16px 20px",marginBottom:14}}>
+        <div style={{background:T.card,border:"1px solid "+T.border,borderRadius:16,padding:"clamp(14px,2vw,22px) clamp(16px,2.5vw,28px)",marginBottom:16}}>
           <Lbl>Income Controls</Lbl>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:24,marginBottom:14,marginTop:10}}>
+          <div className="fc-grid-2" style={{marginBottom:16,marginTop:12}}>
             <SliderRow label="Gross Annual Salary" value={grossSalary} min={20000} max={500000} step={5000} onChange={setGrossSalary} format={v=>cfg.symbol+(v/1000).toFixed(0)+"k"} color={T.green} sublabel={"Net ≈ "+fmt(netSalary)+"/mo"} />
             <SliderRow label="Annual Bonus"        value={annualBonus} min={0}     max={300000} step={5000} onChange={setAnnualBonus} format={v=>cfg.symbol+(v/1000).toFixed(0)+"k"} color={T.amber} sublabel={"Net ≈ "+fmt(netBonus)+"/mo avg"} />
           </div>
           <Toggle checked={inclBonus} onChange={setInclBonus} color={T.amber} label="Include Bonus Income" sublabel={inclBonus?"+"+fmt(netBonus)+"/mo in income":"Bonus excluded from all calculations"} />
-          <div style={{display:"flex",gap:20,flexWrap:"wrap",padding:"10px 14px",background:T.surface,borderRadius:8,marginTop:14}}>
+          <div style={{display:"flex",gap:20,flexWrap:"wrap",padding:"12px 16px",background:T.surface,borderRadius:10,marginTop:16}}>
             {[
               {l:"Net Salary",   v:fmt(netSalary),                         c:T.green},
               {l:"Bonus /mo",    v:inclBonus?fmt(netBonus):"—",             c:inclBonus?T.amber:T.muted},
@@ -955,29 +999,29 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
               {l:"Remainder",    v:(remainder>=0?"+":"")+fmt(remainder),    c:remainder>=0?T.green:T.red},
             ].map(s=>(
               <div key={s.l}>
-                <div style={{fontSize:9,color:T.muted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:3}}>{s.l}</div>
-                <div style={{fontSize:14,color:s.c,fontWeight:700,fontFamily:"monospace"}}>{s.v}</div>
+                <div style={{fontSize:11,color:T.muted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:4}}>{s.l}</div>
+                <div style={{fontSize:15,color:s.c,fontWeight:700,fontFamily:"monospace"}}>{s.v}</div>
               </div>
             ))}
           </div>
         </div>
 
         {/* Tax banner */}
-        <div style={{background:T.amber+"18",border:"1px solid "+T.amber+"33",borderRadius:12,padding:"14px 18px",fontSize:11,color:T.muted,lineHeight:1.9,marginBottom:14}}>
+        <div style={{background:T.amber+"18",border:"1px solid "+T.amber+"33",borderRadius:12,padding:"14px 18px",fontSize:12,color:T.muted,lineHeight:1.8,marginBottom:16}}>
           <span style={{color:T.amber,fontWeight:700}}>{cfg.flag} Tax Note: </span>{cfg.rentalNotes} {cfg.taxYearNote}
         </div>
 
         {/* Tabs */}
-        <div style={{display:"flex",gap:2,marginBottom:18,background:T.card,padding:4,borderRadius:10,border:"1px solid "+T.border,overflowX:"auto"}}>
+        <div style={{display:"flex",gap:3,marginBottom:20,background:T.card,padding:5,borderRadius:12,border:"1px solid "+T.border,overflowX:"auto",WebkitOverflowScrolling:"touch",scrollbarWidth:"none"}}>
           {TABS.map(t=>(
-            <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"8px 10px",borderRadius:7,border:"none",background:tab===t.id?T.accent:"transparent",color:tab===t.id?T.bg:T.muted,cursor:"pointer",fontSize:10,fontFamily:"monospace",letterSpacing:1.5,textTransform:"uppercase",fontWeight:tab===t.id?700:400,transition:"all 0.15s",whiteSpace:"nowrap"}}>{t.label}</button>
+            <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"9px 12px",borderRadius:9,border:"none",background:tab===t.id?T.accent:"transparent",color:tab===t.id?T.bg:T.muted,cursor:"pointer",fontSize:11,letterSpacing:1.2,textTransform:"uppercase",fontWeight:tab===t.id?700:500,transition:"all 0.15s",whiteSpace:"nowrap",minWidth:80}}>{t.label}</button>
           ))}
         </div>
 
         {/* ── OVERVIEW ── */}
         {tab==="overview"&&(
           <>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10,marginBottom:14}}>
+            <div className="fc-grid-5" style={{marginBottom:16}}>
               <StatCard label="Total Expenses"  value={fmt(totalExpenses)} color={T.red}                         sub={pct(totalIncome>0?(totalExpenses/totalIncome)*100:0)+" of income"} />
               <StatCard label="Total Savings"   value={fmt(totalSavings)}  color={T.green}                       sub={pct(savingsRate)+" savings rate"} />
               <StatCard label="Effective Tax"   value={effectiveRate+"%"}  color={T.amber}                       sub={"~"+fmt(netSalary*12)+" net/yr"} />
@@ -986,44 +1030,44 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
             </div>
 
             {/* Runway */}
-            <div style={{background:T.card,border:"1px solid "+runway.color+"44",borderRadius:12,padding:"16px 18px",marginBottom:14}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,flexWrap:"wrap",gap:10}}>
+            <div style={{background:T.card,border:"1px solid "+runway.color+"44",borderRadius:14,padding:"18px 20px",marginBottom:16}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14,flexWrap:"wrap",gap:10}}>
                 <div>
                   <Lbl color={runway.color}>Cash Runway — Liquid Balance</Lbl>
-                  <div style={{fontSize:11,color:T.muted,fontFamily:"monospace",marginTop:2}}>{fmt(totalExpenses)}/mo burn · 6-month target = {fmt(runway.target)}</div>
+                  <div style={{fontSize:12,color:T.muted,marginTop:3}}>{fmt(totalExpenses)}/mo burn · 6-month target = {fmt(runway.target)}</div>
                 </div>
-                <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <span style={{fontSize:9,color:T.muted,fontFamily:"monospace",letterSpacing:1.5,textTransform:"uppercase"}}>Balance</span>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{fontSize:11,color:T.muted,letterSpacing:1.5,textTransform:"uppercase"}}>Balance</span>
                   <input type="number" value={usdBalance} onChange={e=>setUsdBalance(Math.max(0,Number(e.target.value)))}
-                    style={{background:T.faint,border:"1px solid "+runway.color+"66",borderRadius:6,padding:"6px 10px",color:runway.color,fontFamily:"monospace",fontSize:14,fontWeight:700,outline:"none",width:130,textAlign:"right"}} />
+                    style={{background:T.faint,border:"1px solid "+runway.color+"66",borderRadius:8,padding:"7px 12px",color:runway.color,fontFamily:"monospace",fontSize:15,fontWeight:700,outline:"none",width:140,textAlign:"right"}} />
                 </div>
               </div>
-              <div style={{marginBottom:10}}>
-                <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,fontSize:9,color:T.muted,fontFamily:"monospace",letterSpacing:1}}>
+              <div style={{marginBottom:12}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:6,fontSize:11,color:T.muted,letterSpacing:1}}>
                   <span>0</span>
                   <span style={{color:T.amber}}>3 months — {fmt(totalExpenses*3)}</span>
                   <span style={{color:T.green}}>6 months — {fmt(runway.target)}</span>
                 </div>
-                <div style={{position:"relative",height:10,background:T.faint,borderRadius:5}}>
+                <div style={{position:"relative",height:12,background:T.faint,borderRadius:6}}>
                   <div style={{position:"absolute",left:"50%",top:0,width:1,height:"100%",background:T.amber+"66"}} />
-                  <div style={{position:"absolute",left:0,top:0,height:"100%",width:runway.pct+"%",background:"linear-gradient(90deg,"+runway.color+"88,"+runway.color+")",borderRadius:5,transition:"width 0.3s"}} />
+                  <div style={{position:"absolute",left:0,top:0,height:"100%",width:runway.pct+"%",background:"linear-gradient(90deg,"+runway.color+"88,"+runway.color+")",borderRadius:6,transition:"width 0.3s"}} />
                 </div>
-                <div style={{display:"flex",justifyContent:"space-between",marginTop:5,fontSize:10,fontFamily:"monospace"}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginTop:6,fontSize:11}}>
                   <span style={{color:runway.color,fontWeight:700}}>{runway.months.toFixed(1)} months · {pct(runway.pct)} of target</span>
                   {usdBalance<runway.target&&runway.toTarget!==null&&<span style={{color:T.muted}}>~{runway.toTarget.toFixed(1)} months to target</span>}
                   {usdBalance>=runway.target&&<span style={{color:T.green}}>✓ Fully funded</span>}
                 </div>
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8,marginTop:4}}>
+              <div className="fc-runway4" style={{marginTop:6}}>
                 {[
                   {l:"Current Balance",  v:fmt(usdBalance),                                                      c:runway.color},
                   {l:"Monthly Burn",     v:fmt(totalExpenses),                                                   c:T.red},
                   {l:"Shortfall to 6mo", v:usdBalance>=runway.target?"✓ Funded":fmt(runway.target-usdBalance),  c:usdBalance>=runway.target?T.green:T.amber},
                   {l:"Months Covered",   v:runway.months.toFixed(1)+" mo",                                       c:runway.color},
                 ].map(s=>(
-                  <div key={s.l} style={{background:T.surface,borderRadius:8,padding:"10px 12px"}}>
-                    <div style={{fontSize:9,color:T.muted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:4}}>{s.l}</div>
-                    <div style={{fontSize:14,color:s.c,fontFamily:"monospace",fontWeight:700}}>{s.v}</div>
+                  <div key={s.l} style={{background:T.surface,borderRadius:10,padding:"12px 14px"}}>
+                    <div style={{fontSize:11,color:T.muted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:5}}>{s.l}</div>
+                    <div style={{fontSize:15,color:s.c,fontFamily:"monospace",fontWeight:700}}>{s.v}</div>
                   </div>
                 ))}
               </div>
@@ -1044,7 +1088,7 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
                 {[{l:"Fixed",v:totalFixed,c:T.red},{l:"Variable",v:totalVar,c:T.red+"88"},{l:"Savings",v:totalSavings,c:T.green},{l:"Surplus",v:Math.max(0,remainder),c:T.muted}].map(s=>(
                   <div key={s.l} style={{display:"flex",alignItems:"center",gap:5}}>
                     <div style={{width:8,height:8,borderRadius:2,background:s.c}} />
-                    <span style={{fontSize:9,color:T.muted}}>{s.l}: {fmt(s.v)} ({pct(totalIncome>0?(s.v/totalIncome)*100:0)})</span>
+                    <span style={{fontSize:11,color:T.muted}}>{s.l}: {fmt(s.v)} ({pct(totalIncome>0?(s.v/totalIncome)*100:0)})</span>
                   </div>
                 ))}
               </div>
@@ -1062,8 +1106,8 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
                 {label:"Monthly Surplus",       val:remainder,    color:remainder>=0?T.green:T.red,      bold:true},
               ].map((r,i)=>(
                 <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"10px 18px",borderBottom:i<6?"1px solid "+T.border:"none",background:r.bold?T.surface:"transparent",opacity:r.dim?0.4:1}}>
-                  <span style={{fontSize:r.bold?12:11,color:r.bold?T.text:T.muted,fontWeight:r.bold?700:400,textTransform:r.bold?"uppercase":"none",letterSpacing:r.bold?1:0}}>{r.label}</span>
-                  <span style={{fontSize:r.bold?16:13,color:r.color,fontWeight:r.bold?700:400}}>{r.val>=0?fmt(r.val):"-"+fmt(Math.abs(r.val))}</span>
+                  <span style={{fontSize:r.bold?13:12,color:r.bold?T.text:T.muted,fontWeight:r.bold?700:400,textTransform:r.bold?"uppercase":"none",letterSpacing:r.bold?1:0}}>{r.label}</span>
+                  <span style={{fontSize:r.bold?18:14,color:r.color,fontWeight:r.bold?700:400}}>{r.val>=0?fmt(r.val):"-"+fmt(Math.abs(r.val))}</span>
                 </div>
               ))}
             </div>
@@ -1073,7 +1117,7 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
         {/* ── INCOME ── */}
         {tab==="income"&&(
           <>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:14}}>
+            <div className="fc-grid-3" style={{marginBottom:16}}>
               <StatCard label="Net Salary /mo"   value={fmt(netSalary)}   color={T.green} sub={cfg.symbol+(grossSalary/1000).toFixed(0)+"k gross"} />
               <StatCard label="Bonus /mo (avg)"  value={inclBonus?fmt(netBonus):"Excluded"} color={inclBonus?T.amber:T.muted} sub={inclBonus?cfg.symbol+(annualBonus/1000).toFixed(0)+"k gross annual":"Toggle on above"} />
               <StatCard label="Total Net Income" value={fmt(totalIncome)} color={T.text}  sub="All active sources" />
@@ -1104,10 +1148,10 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
                             {isExcluded&&<Pill label="excluded" color={T.muted} />}
                           </div>
                           <div style={{display:"flex",alignItems:"center",gap:8}}>
-                            {!isExcluded&&<span style={{fontSize:10,color:T.muted,fontFamily:"monospace"}}>{pct(share)}</span>}
+                            {!isExcluded&&<span style={{fontSize:11,color:T.muted,fontFamily:"monospace"}}>{pct(share)}</span>}
                             <span style={{fontSize:14,color:isExcluded?T.muted:col,fontFamily:"monospace",fontWeight:700,minWidth:70,textAlign:"right"}}>{fmt(item.amount)}</span>
                             {item.id==="bon"&&<button onClick={()=>setInclBonus(!inclBonus)} style={{background:"transparent",border:"1px solid "+T.border,color:T.muted,cursor:"pointer",fontSize:10,padding:"2px 7px",borderRadius:4,fontFamily:"monospace"}}>{inclBonus?"off":"on"}</button>}
-                            {item.id==="sal"&&<span style={{fontSize:10,color:T.muted,padding:"2px 7px",border:"1px solid "+T.border,borderRadius:4,fontFamily:"monospace"}}>slider ↑</span>}
+                            {item.id==="sal"&&<span style={{fontSize:11,color:T.muted,padding:"2px 7px",border:"1px solid "+T.border,borderRadius:4,fontFamily:"monospace"}}>slider ↑</span>}
                             {!item.auto&&<>
                               <button onClick={()=>setCustomIncome(p=>p.map(i=>i.id===item.id?{...i,excluded:!i.excluded}:i))} style={{background:"transparent",border:"1px solid "+T.border,color:T.muted,cursor:"pointer",fontSize:10,padding:"2px 7px",borderRadius:4,fontFamily:"monospace"}}>{item.excluded?"on":"off"}</button>
                               <button onClick={()=>setCustomIncome(p=>p.filter(i=>i.id!==item.id))} style={{background:"transparent",border:"none",color:T.muted,cursor:"pointer",fontSize:16,padding:"0 2px",lineHeight:1}}>×</button>
@@ -1122,7 +1166,7 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
                           </div>
                         )}
                         {!isExcluded&&item.auto&&<MiniBar value={item.amount} max={totalIncome||1} color={col+"44"} />}
-                        {item.sub&&<div style={{fontSize:9,color:T.muted,fontFamily:"monospace",marginTop:3,paddingLeft:16}}>{item.sub}</div>}
+                        {item.sub&&<div style={{fontSize:11,color:T.muted,fontFamily:"monospace",marginTop:3,paddingLeft:16}}>{item.sub}</div>}
                       </div>
                     );
                   });
@@ -1138,7 +1182,7 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
         {/* ── EXPENSES ── */}
         {tab==="expenses"&&(
           <>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14}}>
+            <div className="fc-grid-3" style={{marginBottom:16}}>
               <StatCard label="Fixed Expenses"    value={fmt(totalFixed)}    color={T.red}      sub={pct(totalIncome>0?(totalFixed/totalIncome)*100:0)+" of income"} />
               <StatCard label="Variable Expenses" value={fmt(totalVar)}      color={T.red+"88"} sub={pct(totalIncome>0?(totalVar/totalIncome)*100:0)+" of income"} />
               <StatCard label="Total Outgoings"   value={fmt(totalExpenses)} color={T.red}      sub={pct(totalIncome>0?(totalExpenses/totalIncome)*100:0)+" of income"} />
@@ -1151,7 +1195,7 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
         {/* ── SAVINGS ── */}
         {tab==="savings"&&(
           <>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14}}>
+            <div className="fc-grid-3" style={{marginBottom:16}}>
               <StatCard label="Monthly Savings"  value={fmt(totalSavings)}             color={T.green} sub={pct(savingsRate)+" savings rate"} />
               <StatCard label="Annual Savings"   value={fmt(totalSavings*12)}           color={T.green} sub="Excluding bonus" />
               <StatCard label="With Bonus (net)" value={fmt(totalSavings*12+netBonus*12)} color={T.amber} sub="Total annual capacity" />
@@ -1166,7 +1210,7 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
                   const share=totalSavings>0?(b.amount/totalSavings)*100:0;
                   return (
                     <div key={b.id} style={{display:"flex",alignItems:"center",gap:10}}>
-                      <div style={{width:80,fontSize:10,color:T.muted,textAlign:"right",flexShrink:0}}>{fmt(b.amount)}</div>
+                      <div style={{width:80,fontSize:11,color:T.muted,textAlign:"right",flexShrink:0}}>{fmt(b.amount)}</div>
                       <div style={{flex:1}}><MiniBar value={b.amount} max={totalSavings||1} color={col} /></div>
                       <div style={{fontSize:10,color:col,width:36,flexShrink:0}}>{pct(share)}</div>
                       <div style={{fontSize:11,color:T.text,flex:1}}>{b.name}</div>
@@ -1196,7 +1240,7 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,fontFamily:"monospace"}}>
                   <thead>
                     <tr>{["Period","Investments","Bonus Invested","Car","Total","vs Target"].map(h=>(
-                      <th key={h} style={{padding:"10px 12px",textAlign:"right",color:T.muted,fontSize:9,letterSpacing:1.5,textTransform:"uppercase",borderBottom:"1px solid "+T.border,whiteSpace:"nowrap"}}>{h}</th>
+                      <th key={h} style={{padding:"10px 12px",textAlign:"right",color:T.muted,fontSize:10,letterSpacing:1.5,textTransform:"uppercase",borderBottom:"1px solid "+T.border,whiteSpace:"nowrap"}}>{h}</th>
                     ))}</tr>
                   </thead>
                   <tbody>
@@ -1227,7 +1271,7 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
             <HealthScore savingsRate={savingsRate} housingPct={housingPct} totalExpenses={totalExpenses} netIncome={totalIncome} />
             <div style={{background:T.card,border:"1px solid "+runway.color+"44",borderRadius:12,padding:"16px 18px",marginBottom:14}}>
               <Lbl color={runway.color}>Cash Runway Analysis — {fmt(usdBalance)} liquid</Lbl>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:10}}>
+              <div className="fc-analysis" style={{marginTop:12}}>
                 {[
                   {label:"3-month benchmark",  score:runway.months>=3?"✓ Met":"⚠ Below",                                                          color:runway.months>=3?T.green:T.red,  detail:runway.months>=3?fmt(usdBalance)+" covers "+runway.months.toFixed(1)+" months. Above minimum.":"Only "+runway.months.toFixed(1)+"mo covered. "+fmt(runway.target/2-usdBalance)+" needed for 3-month floor."},
                   {label:"6-month target",     score:runway.months>=6?"✓ Funded":runway.months>=3?"~ In Progress":"⚠ Priority",                    color:runway.color,                    detail:runway.months>=6?"Fully funded. "+fmt(usdBalance-runway.target)+" above target — consider deploying into investments.":fmt(runway.target-usdBalance)+" shortfall. "+(runway.toTarget!==null?"Reachable in ~"+runway.toTarget.toFixed(1)+" months at current surplus.":"Increase surplus to accelerate.")},
@@ -1236,7 +1280,7 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
                 ].map(item=>(
                   <div key={item.label} style={{background:T.surface,border:"1px solid "+item.color+"33",borderRadius:10,padding:"12px 14px"}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                      <span style={{fontSize:10,color:T.muted,fontFamily:"monospace"}}>{item.label}</span>
+                      <span style={{fontSize:11,color:T.muted,fontFamily:"monospace"}}>{item.label}</span>
                       <Pill label={item.score} color={item.color} />
                     </div>
                     <p style={{margin:0,fontSize:11,color:T.muted,lineHeight:1.7}}>{item.detail}</p>
@@ -1267,7 +1311,7 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
           </>
         )}
 
-        <div style={{textAlign:"center",marginTop:24,fontSize:9,color:T.border,paddingBottom:20}}>
+        <div style={{textAlign:"center",marginTop:28,fontSize:11,color:T.border,paddingBottom:24}}>
           For personal planning purposes only · Not financial advice · FinCommand 2026
         </div>
       </div>
@@ -1362,6 +1406,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
+      <GlobalStyles />
       <ThemeContext.Provider value={theme}>
         {screen==="landing"    &&<LandingPage onGetStarted={()=>setScreen("auth")} />}
         {screen==="auth"       &&<AuthPage onBack={()=>setScreen("landing")} onAuthSuccess={refreshSession} />}
