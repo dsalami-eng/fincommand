@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback, useContext, createContext } from "react";
 
+// ── Global CSS ──────────────────────────────────────────────────────────────
 const GLOBAL_CSS = `
   *, *::before, *::after { box-sizing: border-box; }
   html, body, #root { width:100%; min-height:100%; margin:0; padding:0; }
@@ -38,11 +39,14 @@ const GLOBAL_CSS = `
 `;
 function GlobalStyles() { return <style dangerouslySetInnerHTML={{ __html: GLOBAL_CSS }} />; }
 
+// ══════════════════════════════════════════════════════════════════════════════
 // SUPABASE  — real by default, env-injectable
+// ══════════════════════════════════════════════════════════════════════════════
+// ── Configure these with your real Supabase project credentials ──────────────
 // Get them from: https://supabase.com/dashboard → Project → Settings → API
 const SUPABASE_URL  = "https://cjgazhrxexjvztkzaujk.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNqZ2F6aHJ4ZXhqdnp0a3phdWprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5MTY0OTgsImV4cCI6MjA4ODQ5MjQ5OH0.2CB4zj-1z5RrS728vM87mq4rM1vnnxuahqE09HGuOXM";
-
+                     // Replace with your anon/public key
 const IS_CONFIGURED = !SUPABASE_URL.includes("YOUR_PROJECT");
 
 // Fallback demo mode when keys not yet configured
@@ -93,7 +97,9 @@ async function onAuthChange(cb) {
   return () => subscription?.unsubscribe();
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
 // THEMES — 13 themes across 3 categories
+// ══════════════════════════════════════════════════════════════════════════════
 const THEME_GROUPS = [
   { id:"dark",    label:"Dark",    emoji:"🌙" },
   { id:"light",   label:"Light",   emoji:"☀️" },
@@ -101,63 +107,69 @@ const THEME_GROUPS = [
   { id:"culture", label:"Culture", emoji:"🌍" },
 ];
 const THEMES = {
+  // ── Dark terminals ──────────────────────────────────────────────────────────
   terminal: { id:"terminal", name:"Terminal", emoji:"🖥️", group:"dark",
-  bg:"#08090b", surface:"#0f1114", card:"#141719", border:"#1e2329",
-  text:"#e8eaf0", muted:"#4a5568", faint:"#1a1f26",
-  green:"#00c896", red:"#ff4d6d", amber:"#f5a623", blue:"#4d9fff", purple:"#b57bee", accent:"#00c896" },
+    bg:"#08090b", surface:"#0f1114", card:"#141719", border:"#1e2329",
+    text:"#e8eaf0", muted:"#4a5568", faint:"#1a1f26",
+    green:"#00c896", red:"#ff4d6d", amber:"#f5a623", blue:"#4d9fff", purple:"#b57bee", accent:"#00c896" },
   slate: { id:"slate", name:"Slate", emoji:"🌫️", group:"dark",
-  bg:"#0d1117", surface:"#161b22", card:"#1c2230", border:"#21293a",
-  text:"#cdd9e5", muted:"#546e7a", faint:"#1a2233",
-  green:"#3fb950", red:"#f85149", amber:"#d29922", blue:"#58a6ff", purple:"#bc8cff", accent:"#58a6ff" },
+    bg:"#0d1117", surface:"#161b22", card:"#1c2230", border:"#21293a",
+    text:"#cdd9e5", muted:"#546e7a", faint:"#1a2233",
+    green:"#3fb950", red:"#f85149", amber:"#d29922", blue:"#58a6ff", purple:"#bc8cff", accent:"#58a6ff" },
   midnight: { id:"midnight", name:"Midnight", emoji:"🌌",  group:"dark",
-  bg:"#04050f", surface:"#080c1e", card:"#0d1230", border:"#141a3a",
-  text:"#c8d6f0", muted:"#3a4870", faint:"#0b1028",
-  green:"#00e5a0", red:"#ff4466", amber:"#ffa040", blue:"#6090ff", purple:"#a060ff", accent:"#6090ff" },
+    bg:"#04050f", surface:"#080c1e", card:"#0d1230", border:"#141a3a",
+    text:"#c8d6f0", muted:"#3a4870", faint:"#0b1028",
+    green:"#00e5a0", red:"#ff4466", amber:"#ffa040", blue:"#6090ff", purple:"#a060ff", accent:"#6090ff" },
+  // ── Light / soft ────────────────────────────────────────────────────────────
   spring: { id:"spring", name:"Spring", emoji:"🌸", group:"light",
-  bg:"#f7f4f0", surface:"#ede8e2", card:"#ffffff", border:"#d9cfc6",
-  text:"#2d2420", muted:"#8a7d74", faint:"#e8e0d8",
-  green:"#3a8e54", red:"#c96b6b", amber:"#c8883a", blue:"#4a7fb0", purple:"#9b72b0", accent:"#c84580" },
+    bg:"#f7f4f0", surface:"#ede8e2", card:"#ffffff", border:"#d9cfc6",
+    text:"#2d2420", muted:"#8a7d74", faint:"#e8e0d8",
+    green:"#3a8e54", red:"#c96b6b", amber:"#c8883a", blue:"#4a7fb0", purple:"#9b72b0", accent:"#c84580" },
   summer: { id:"summer", name:"Summer", emoji:"☀️", group:"light",
-  bg:"#fffbf2", surface:"#fff4dc", card:"#ffffff", border:"#f0dba0",
-  text:"#2a1e00", muted:"#a07828", faint:"#fff0c8",
-  green:"#28a060", red:"#e04040", amber:"#f0a000", blue:"#2878c8", purple:"#8858b8", accent:"#e08000" },
+    bg:"#fffbf2", surface:"#fff4dc", card:"#ffffff", border:"#f0dba0",
+    text:"#2a1e00", muted:"#a07828", faint:"#fff0c8",
+    green:"#28a060", red:"#e04040", amber:"#f0a000", blue:"#2878c8", purple:"#8858b8", accent:"#e08000" },
   winter: { id:"winter", name:"Winter", emoji:"❄️", group:"light",
-  bg:"#f0f4f8", surface:"#e4edf6", card:"#ffffff", border:"#c8d8ec",
-  text:"#1a2840", muted:"#5a7898", faint:"#dce8f4",
-  green:"#0a8060", red:"#c84040", amber:"#c87820", blue:"#1460b0", purple:"#5848a0", accent:"#1460b0" },
+    bg:"#f0f4f8", surface:"#e4edf6", card:"#ffffff", border:"#c8d8ec",
+    text:"#1a2840", muted:"#5a7898", faint:"#dce8f4",
+    green:"#0a8060", red:"#c84040", amber:"#c87820", blue:"#1460b0", purple:"#5848a0", accent:"#1460b0" },
+  // ── City themes ─────────────────────────────────────────────────────────────
   london: { id:"london", name:"London", emoji:"🇬🇧", group:"cities",
-  bg:"#0f1318", surface:"#161c24", card:"#1c2530", border:"#253040",
-  text:"#d8dde5", muted:"#50607a", faint:"#18222e",
-  green:"#4aaa7c", red:"#cc4455", amber:"#c8920a", blue:"#4a8acc", purple:"#8878cc", accent:"#4a8acc" },
+    bg:"#0f1318", surface:"#161c24", card:"#1c2530", border:"#253040",
+    text:"#d8dde5", muted:"#50607a", faint:"#18222e",
+    green:"#4aaa7c", red:"#cc4455", amber:"#c8920a", blue:"#4a8acc", purple:"#8878cc", accent:"#4a8acc" },
   newyork: { id:"newyork", name:"New York", emoji:"🗽", group:"cities",
-  bg:"#0a0a0f", surface:"#111118", card:"#18181f", border:"#24242e",
-  text:"#e8e8f0", muted:"#505068", faint:"#14141c",
-  green:"#00cc88", red:"#ff3355", amber:"#ffa800", blue:"#4488ff", purple:"#cc44ff", accent:"#ffa800" },
+    bg:"#0a0a0f", surface:"#111118", card:"#18181f", border:"#24242e",
+    text:"#e8e8f0", muted:"#505068", faint:"#14141c",
+    green:"#00cc88", red:"#ff3355", amber:"#ffa800", blue:"#4488ff", purple:"#cc44ff", accent:"#ffa800" },
   tokyo: { id:"tokyo", name:"Tokyo", emoji:"🗼", group:"cities",
-  bg:"#0a0818", surface:"#110d28", card:"#161238", border:"#1e1848",
-  text:"#e8d8f8", muted:"#5848a8", faint:"#130f30",
-  green:"#00e8a8", red:"#ff2060", amber:"#ff9820", blue:"#40b0ff", purple:"#c030ff", accent:"#c030ff" },
+    bg:"#0a0818", surface:"#110d28", card:"#161238", border:"#1e1848",
+    text:"#e8d8f8", muted:"#5848a8", faint:"#130f30",
+    green:"#00e8a8", red:"#ff2060", amber:"#ff9820", blue:"#40b0ff", purple:"#c030ff", accent:"#c030ff" },
   la: { id:"la", name:"Los Angeles", emoji:"🌴", group:"cities",
-  bg:"#0c0a06", surface:"#181408", card:"#221c0a", border:"#302814",
-  text:"#f8f0d8", muted:"#807050", faint:"#1e1808",
-  green:"#50c858", red:"#ff5028", amber:"#ffc030", blue:"#30a8e8", purple:"#c050d8", accent:"#ffc030" },
+    bg:"#0c0a06", surface:"#181408", card:"#221c0a", border:"#302814",
+    text:"#f8f0d8", muted:"#807050", faint:"#1e1808",
+    green:"#50c858", red:"#ff5028", amber:"#ffc030", blue:"#30a8e8", purple:"#c050d8", accent:"#ffc030" },
+  // ── Culture ─────────────────────────────────────────────────────────────────
   autumn: { id:"autumn", name:"Autumn", emoji:"🍂", group:"culture",
-  bg:"#1a1208", surface:"#251a0a", card:"#2e2010", border:"#3d2e15",
-  text:"#f0e0c0", muted:"#8a7050", faint:"#3a2a12",
-  green:"#8ab840", red:"#e05030", amber:"#e08020", blue:"#7090c0", purple:"#b06890", accent:"#e08020" },
+    bg:"#1a1208", surface:"#251a0a", card:"#2e2010", border:"#3d2e15",
+    text:"#f0e0c0", muted:"#8a7050", faint:"#3a2a12",
+    green:"#8ab840", red:"#e05030", amber:"#e08020", blue:"#7090c0", purple:"#b06890", accent:"#e08020" },
   westafrica: { id:"westafrica", name:"Kente", emoji:"🇬🇭", group:"culture",
-  bg:"#0e0a02", surface:"#1a1404", card:"#221c06", border:"#332a08",
-  text:"#fef0c0", muted:"#907840", faint:"#2a2208",
-  green:"#40a840", red:"#e03010", amber:"#f0a800", blue:"#2080c0", purple:"#9840c0", accent:"#f0a800" },
+    bg:"#0e0a02", surface:"#1a1404", card:"#221c06", border:"#332a08",
+    text:"#fef0c0", muted:"#907840", faint:"#2a2208",
+    green:"#40a840", red:"#e03010", amber:"#f0a800", blue:"#2080c0", purple:"#9840c0", accent:"#f0a800" },
   nigeria: { id:"nigeria", name:"Naija", emoji:"🇳🇬", group:"culture",
-  bg:"#061006", surface:"#0c1e0c", card:"#112811", border:"#1a3a1a",
-  text:"#d8f0d8", muted:"#4e7e4e", faint:"#162416",
-  green:"#22d822", red:"#ff5022", amber:"#f8d000", blue:"#3878ff", purple:"#c050d8", accent:"#22d822" },
+    bg:"#061006", surface:"#0c1e0c", card:"#112811", border:"#1a3a1a",
+    text:"#d8f0d8", muted:"#4e7e4e", faint:"#162416",
+    green:"#22d822", red:"#ff5022", amber:"#f8d000", blue:"#3878ff", purple:"#c050d8", accent:"#22d822" },
 };
 const ThemeCtx = createContext(THEMES.terminal);
 const useTheme = () => useContext(ThemeCtx);
 
+// ══════════════════════════════════════════════════════════════════════════════
 // TAX ENGINE
+// ══════════════════════════════════════════════════════════════════════════════
 const TAX_CONFIGS = {
   US:{ name:"United States", flag:"🇺🇸", currency:"USD", symbol:"$",  fxToUSD:1,
     brackets:[{up:11600,r:.10},{up:47150,r:.12},{up:100525,r:.22},{up:191950,r:.24},{up:243725,r:.32},{up:609350,r:.35},{up:Infinity,r:.37}],
@@ -202,7 +214,9 @@ function calcTax(country, grossAnnual, bonusAnnual) {
   return { netSalary:Math.round((grossAnnual/12)*r), netBonus:Math.round((bonusAnnual/12)*r), effectiveRate:(totalTax/total*100).toFixed(1), annualTax:Math.round(totalTax) };
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
 // CONSTANTS & HELPERS
+// ══════════════════════════════════════════════════════════════════════════════
 const TARGET_USD = 1900000;
 const fv = (mo,rate,yrs) => { if(mo<=0||yrs<=0)return 0; const r=rate/12; return mo*((Math.pow(1+r,yrs*12)-1)/r)*(1+r); };
 const sum = (arr,key) => (arr||[]).filter(i=>!i.excluded).reduce((s,i)=>s+(Number(i[key])||0),0);
@@ -252,7 +266,7 @@ const DEFAULT_CASHFLOW = () => ({
     const d=new Date(); d.setMonth(d.getMonth()+i);
     return {
       id:uid(),
-      label:`${d.toLocaleString("default",{month:"short"})} ${d.getFullYear()}`,
+      label:d.toLocaleString("default",{month:"short"})+" "+d.getFullYear(),
       oneOffs: [],
     };
   }),
@@ -278,7 +292,9 @@ function niceMax(v) {
   return 10*mag;
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
 // PRIMITIVE COMPONENTS
+// ══════════════════════════════════════════════════════════════════════════════
 function Lbl({ children, color }) {
   const T=useTheme();
   return <div style={{fontSize:10,letterSpacing:1.5,textTransform:"uppercase",color:color||T.muted,marginBottom:6}}>{children}</div>;
@@ -347,7 +363,9 @@ function Spinner() {
   return <div className="fc-spin" style={{width:16,height:16,border:"2px solid "+T.border,borderTop:"2px solid "+T.accent,borderRadius:"50%",display:"inline-block"}} />;
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
 // INLINE EDIT FIELD — click-to-edit for any cell
+// ══════════════════════════════════════════════════════════════════════════════
 function InlineEdit({ value, onCommit, type="text", style={}, placeholder="" }) {
   const T=useTheme();
   const [editing,setEditing]=useState(false);
@@ -376,7 +394,9 @@ function InlineEdit({ value, onCommit, type="text", style={}, placeholder="" }) 
   );
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
 // THEME PICKER — grouped with 13 themes
+// ══════════════════════════════════════════════════════════════════════════════
 function ThemePicker({ current, onChange }) {
   const T=useTheme(); const [open,setOpen]=useState(false);
   const ref=useRef(null);
@@ -423,7 +443,9 @@ function ThemePicker({ current, onChange }) {
   );
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
 // EDITABLE TABLE — full inline name & value editing + slider
+// ══════════════════════════════════════════════════════════════════════════════
 function EditableTable({ title, icon, items, setItems, accentColor, sliderMax }) {
   const T=useTheme(); const sMax=sliderMax||5000;
   const [adding,setAdding]=useState(false);
@@ -510,7 +532,9 @@ function EditableTable({ title, icon, items, setItems, accentColor, sliderMax })
   );
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
 // SAVINGS SECTION
+// ══════════════════════════════════════════════════════════════════════════════
 function SavingsSection({ buckets, setBuckets }) {
   const T=useTheme();
   const [adding,setAdding]=useState(false);
@@ -577,7 +601,9 @@ function SavingsSection({ buckets, setBuckets }) {
   );
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
 // PROJECTION CHART
+// ══════════════════════════════════════════════════════════════════════════════
 function ProjChart({ monthlySavings, netBonus, includeBonus, intervalMode, fmtK }) {
   const T=useTheme();
   const [hovIdx,setHovIdx]=useState(null);
@@ -652,7 +678,9 @@ function ProjChart({ monthlySavings, netBonus, includeBonus, intervalMode, fmtK 
   );
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
 // CASHFLOW TAB — inspired by 18M Cashflow spreadsheet
+// ══════════════════════════════════════════════════════════════════════════════
 function CashflowTab({ cashflow, setCashflow, monthlyIncome, monthlyExpenses, monthlySavings, fmt, fmtK }) {
   const T=useTheme();
   const [addingOneOff,setAddingOneOff]=useState(null); // monthId
@@ -751,7 +779,7 @@ function CashflowTab({ cashflow, setCashflow, monthlyIncome, monthlyExpenses, mo
                       <td style={{padding:"10px 12px",color:T.text,fontWeight:700,whiteSpace:"nowrap"}}>
                         <div style={{display:"flex",alignItems:"center",gap:6}}>
                           <span style={{fontSize:13}}>{row.label}</span>
-                          {(row.oneOffs||[]).length>0&&<Pill label={`${row.oneOffs.length} one-off${row.oneOffs.length>1?"s":""}`} color={T.amber} />}
+                          {(row.oneOffs||[]).length>0&&<Pill label={row.oneOffs.length+" one-off"+(row.oneOffs.length>1?"s":"")} color={T.amber} />}
                           <span style={{fontSize:10,color:T.muted,marginLeft:4}}>{addingOneOff===row.id?"▲":"▼"}</span>
                         </div>
                       </td>
@@ -851,7 +879,9 @@ function CashflowTab({ cashflow, setCashflow, monthlyIncome, monthlyExpenses, mo
   );
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
 // HEALTH SCORE
+// ══════════════════════════════════════════════════════════════════════════════
 function HealthScore({ savingsRate, housingPct, totalExpenses, netIncome }) {
   const T=useTheme();
   const expRatio=netIncome>0?totalExpenses/netIncome:0;
@@ -878,7 +908,9 @@ function HealthScore({ savingsRate, housingPct, totalExpenses, netIncome }) {
   );
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
 // LANDING PAGE
+// ══════════════════════════════════════════════════════════════════════════════
 function LandingPage({ onGetStarted }) {
   const T=useTheme();
   const features=[
@@ -934,7 +966,9 @@ function LandingPage({ onGetStarted }) {
   );
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
 // AUTH PAGE — real sign-up/sign-in/google/password reset
+// ══════════════════════════════════════════════════════════════════════════════
 function AuthPage({ onBack, onAuthSuccess }) {
   const T=useTheme();
   const [mode,setMode]=useState("signin"); // signin | signup | reset
@@ -1093,7 +1127,9 @@ function AuthPage({ onBack, onAuthSuccess }) {
   );
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
 // ONBOARDING
+// ══════════════════════════════════════════════════════════════════════════════
 function OnboardingPage({ user, onComplete }) {
   const T=useTheme();
   const [step,setStep]=useState(0);
@@ -1193,7 +1229,9 @@ function OnboardingPage({ user, onComplete }) {
   );
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
 // INCOME TABLE — with inline edit
+// ══════════════════════════════════════════════════════════════════════════════
 function IncomeTable({ items, setCustomIncome, inclBonus, setInclBonus, totalIncome, fmt }) {
   const T=useTheme();
   const [adding,setAdding]=useState(false);
@@ -1276,13 +1314,16 @@ function IncomeTable({ items, setCustomIncome, inclBonus, setInclBonus, totalInc
   );
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
 // DASHBOARD
+// ══════════════════════════════════════════════════════════════════════════════
 function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChange }) {
   const T=useTheme();
   const country=profile?.country||"US";
   const cfg=TAX_CONFIGS[country]||TAX_CONFIGS.US;
   const {fmt,fmtK}=useMemo(()=>buildFmt(cfg.symbol),[cfg.symbol]);
 
+  // ── v7 overlay states ────────────────────────────────────────────────────
   const [showGlossary,  setShowGlossary ]=useState(false);
   const [showAI,        setShowAI       ]=useState(false);
   const [showTaxReport, setShowTaxReport]=useState(false);
@@ -1719,8 +1760,38 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
   );
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
 // GLOSSARY — lightbulb icon panel with plain-English financial definitions
-const GLOSSARY_TERMS = [ { term:"Net Income", cat:"Income", def:"Your take-home pay after all taxes are deducted. The actual money that lands in your bank account each month." }, { term:"Gross Salary", cat:"Income", def:"Your salary before any tax or deductions. The number on your job offer letter." }, { term:"Effective Tax Rate", cat:"Tax", def:"The overall percentage of your total income you pay in tax — not your top bracket rate. If you earn $100k and pay $22k in tax, your effective rate is 22%." }, { term:"Marginal Tax Rate", cat:"Tax", def:"The tax rate applied only to your next pound/dollar of income. Earning £1,000 more doesn't mean everything gets taxed at the higher rate — only that extra £1,000 does." }, { term:"FICA", cat:"Tax", def:"US payroll taxes: Social Security (6.2%) and Medicare (1.45%) that are automatically deducted from your US payslip." }, { term:"National Insurance", cat:"Tax", def:"UK payroll contributions (similar to US FICA) that fund state pension and NHS. You pay 8% on earnings between £12,570–£50,270." }, { term:"Monthly Surplus", cat:"Budgeting", def:"What's left over each month after paying all expenses and hitting your savings targets. Positive = you're building wealth. Negative = spending more than you earn." }, { term:"Cash Runway", cat:"Budgeting", def:"How many months you could cover all your expenses using only your current liquid savings, with no income. 6 months is the gold standard emergency buffer." }, { term:"Savings Rate", cat:"Budgeting", def:"The percentage of your net income you save each month. A 20% rate is considered good; 30%+ is strong for wealth building." }, { term:"Housing Ratio", cat:"Budgeting", def:"The percentage of your net income spent on rent or mortgage. Financial rules of thumb suggest keeping this below 30%." }, { term:"Emergency Fund", cat:"Savings", def:"A dedicated cash reserve set aside purely for unexpected events — job loss, medical bills, urgent repairs. Separate from investment savings." }, { term:"Index Funds", cat:"Investing", def:"Investment funds that track a market index (like the S&P 500). Low-cost, diversified, and historically outperform most active fund managers over time." }, { term:"401(k) / Pension", cat:"Investing", def:"Tax-advantaged retirement savings accounts. Contributions often reduce your taxable income now, and the money grows tax-free until retirement." }, { term:"Compound Interest", cat:"Investing", def:"Earning returns on your returns. A £10k investment growing at 7%/year becomes ~£19.7k in 10 years — not from adding money, but because growth builds on itself." }, { term:"7% Return Assumption", cat:"Investing", def:"The historical average annual real return of a globally diversified stock portfolio over long periods, after adjusting for inflation. Used as a conservative planning benchmark." }, { term:"Net Worth", cat:"Wealth", def:"Everything you own (assets) minus everything you owe (liabilities). Your salary doesn't build wealth — your net worth does." }, { term:"Liquidity", cat:"Wealth", def:"How quickly you can turn an asset into cash without losing much value. Cash is fully liquid; property is illiquid. Liquid savings = accessible money." }, { term:"Asset Allocation", cat:"Investing", def:"How you divide investments across categories like stocks, bonds, property, and cash. Your allocation determines your risk/return profile." }, { term:"Negative Gearing", cat:"Tax", def:"(Australia) When your rental income is less than the property costs — the loss can offset other taxable income, reducing your total tax bill." }, { term:"Foreign Tax Credit", cat:"Tax", def:"A US tax mechanism that prevents double-taxation on income you've already paid tax on in another country — relevant if you have UK income and a US tax obligation." }, { term:"Self Assessment", cat:"Tax", def:"The UK annual tax filing process for people with income not taxed at source (rental income, freelance, overseas income). Deadline: January 31st." }, { term:"Non-Resident Landlord Scheme (NRLS)", cat:"Tax", def:"UK scheme requiring tenants/agents to deduct basic rate tax from rental payments to landlords living abroad, unless HMRC has approved gross payment." }, { term:"Projected Surplus", cat:"Cashflow", def:"How much cash you're expected to have left at the end of the month after all planned income and expenses — before one-off costs." }, { term:"One-Off Expenses", cat:"Cashflow", def:"Non-recurring costs in a given month — holiday, car service, new appliance, moving costs. These don't appear every month but can significantly impact your cash position." }, { term:"Closing Balance", cat:"Cashflow", def:"The amount of liquid cash you're projected to have at the end of a given month, after all income, expenses, savings, and one-offs." }, { term:"$1.9M Target", cat:"Wealth", def:"FinCommand's default net worth target — approximately £1.5M — based on the 4% safe withdrawal rule needing ~£60k/yr in retirement to maintain a comfortable lifestyle in a major city." }, { term:"Dollar-Cost Averaging", cat:"Investing", def:"Investing a fixed amount at regular intervals regardless of market conditions. Removes the impossible task of timing the market and smooths out volatility over time." }, { term:"Capital Gains", cat:"Tax", def:"Profit made when you sell an asset for more than you paid for it — shares, property, crypto. Often taxed differently (usually lower) than regular income." },
+// ══════════════════════════════════════════════════════════════════════════════
+const GLOSSARY_TERMS = [
+  { term:"Net Income", cat:"Income", def:"Your take-home pay after all taxes are deducted. The actual money that lands in your bank account each month." },
+  { term:"Gross Salary", cat:"Income", def:"Your salary before any tax or deductions. The number on your job offer letter." },
+  { term:"Effective Tax Rate", cat:"Tax", def:"The overall percentage of your total income you pay in tax — not your top bracket rate. If you earn $100k and pay $22k in tax, your effective rate is 22%." },
+  { term:"Marginal Tax Rate", cat:"Tax", def:"The tax rate applied only to your next pound/dollar of income. Earning £1,000 more doesn't mean everything gets taxed at the higher rate — only that extra £1,000 does." },
+  { term:"FICA", cat:"Tax", def:"US payroll taxes: Social Security (6.2%) and Medicare (1.45%) that are automatically deducted from your US payslip." },
+  { term:"National Insurance", cat:"Tax", def:"UK payroll contributions (similar to US FICA) that fund state pension and NHS. You pay 8% on earnings between £12,570–£50,270." },
+  { term:"Monthly Surplus", cat:"Budgeting", def:"What's left over each month after paying all expenses and hitting your savings targets. Positive = you're building wealth. Negative = spending more than you earn." },
+  { term:"Cash Runway", cat:"Budgeting", def:"How many months you could cover all your expenses using only your current liquid savings, with no income. 6 months is the gold standard emergency buffer." },
+  { term:"Savings Rate", cat:"Budgeting", def:"The percentage of your net income you save each month. A 20% rate is considered good; 30%+ is strong for wealth building." },
+  { term:"Housing Ratio", cat:"Budgeting", def:"The percentage of your net income spent on rent or mortgage. Financial rules of thumb suggest keeping this below 30%." },
+  { term:"Emergency Fund", cat:"Savings", def:"A dedicated cash reserve set aside purely for unexpected events — job loss, medical bills, urgent repairs. Separate from investment savings." },
+  { term:"Index Funds", cat:"Investing", def:"Investment funds that track a market index (like the S&P 500). Low-cost, diversified, and historically outperform most active fund managers over time." },
+  { term:"401(k) / Pension", cat:"Investing", def:"Tax-advantaged retirement savings accounts. Contributions often reduce your taxable income now, and the money grows tax-free until retirement." },
+  { term:"Compound Interest", cat:"Investing", def:"Earning returns on your returns. A £10k investment growing at 7%/year becomes ~£19.7k in 10 years — not from adding money, but because growth builds on itself." },
+  { term:"7% Return Assumption", cat:"Investing", def:"The historical average annual real return of a globally diversified stock portfolio over long periods, after adjusting for inflation. Used as a conservative planning benchmark." },
+  { term:"Net Worth", cat:"Wealth", def:"Everything you own (assets) minus everything you owe (liabilities). Your salary doesn't build wealth — your net worth does." },
+  { term:"Liquidity", cat:"Wealth", def:"How quickly you can turn an asset into cash without losing much value. Cash is fully liquid; property is illiquid. Liquid savings = accessible money." },
+  { term:"Asset Allocation", cat:"Investing", def:"How you divide investments across categories like stocks, bonds, property, and cash. Your allocation determines your risk/return profile." },
+  { term:"Negative Gearing", cat:"Tax", def:"(Australia) When your rental income is less than the property costs — the loss can offset other taxable income, reducing your total tax bill." },
+  { term:"Foreign Tax Credit", cat:"Tax", def:"A US tax mechanism that prevents double-taxation on income you've already paid tax on in another country — relevant if you have UK income and a US tax obligation." },
+  { term:"Self Assessment", cat:"Tax", def:"The UK annual tax filing process for people with income not taxed at source (rental income, freelance, overseas income). Deadline: January 31st." },
+  { term:"Non-Resident Landlord Scheme (NRLS)", cat:"Tax", def:"UK scheme requiring tenants/agents to deduct basic rate tax from rental payments to landlords living abroad, unless HMRC has approved gross payment." },
+  { term:"Projected Surplus", cat:"Cashflow", def:"How much cash you're expected to have left at the end of the month after all planned income and expenses — before one-off costs." },
+  { term:"One-Off Expenses", cat:"Cashflow", def:"Non-recurring costs in a given month — holiday, car service, new appliance, moving costs. These don't appear every month but can significantly impact your cash position." },
+  { term:"Closing Balance", cat:"Cashflow", def:"The amount of liquid cash you're projected to have at the end of a given month, after all income, expenses, savings, and one-offs." },
+  { term:"$1.9M Target", cat:"Wealth", def:"FinCommand's default net worth target — approximately £1.5M — based on the 4% safe withdrawal rule needing ~£60k/yr in retirement to maintain a comfortable lifestyle in a major city." },
+  { term:"Dollar-Cost Averaging", cat:"Investing", def:"Investing a fixed amount at regular intervals regardless of market conditions. Removes the impossible task of timing the market and smooths out volatility over time." },
+  { term:"Capital Gains", cat:"Tax", def:"Profit made when you sell an asset for more than you paid for it — shares, property, crypto. Often taxed differently (usually lower) than regular income." },
 ];
 
 function GlossaryPanel({ onClose }) {
@@ -1784,7 +1855,9 @@ function GlossaryPanel({ onClose }) {
   );
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
 // TAX YEAR SUMMARY REPORT (Enhancement #9)
+// ══════════════════════════════════════════════════════════════════════════════
 function TaxYearReport({ profile, grossSalary, annualBonus, inclBonus, netSalary, netBonus, effectiveRate, totalSavings, totalExpenses, totalIncome, fmt, onClose }) {
   const T=useTheme();
   const cfg=TAX_CONFIGS[profile?.country||"US"]||TAX_CONFIGS.US;
@@ -1863,8 +1936,10 @@ function TaxYearReport({ profile, grossSalary, annualBonus, inclBonus, netSalary
   );
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
 // AI FINANCE ADVISOR — conversational AI using the Anthropic API
 // Powered by dashboard data context + Claude claude-sonnet-4-20250514
+// ══════════════════════════════════════════════════════════════════════════════
 function AIAdvisor({ dashboardContext, themeId, onClose }) {
   const T=useTheme();
   const [messages,setMessages]=useState([
@@ -1896,28 +1971,110 @@ function AIAdvisor({ dashboardContext, themeId, onClose }) {
     const newMessages=[...messages,{role:"user",text:userText}];
     setMessages(newMessages);
     setLoading(true);
-    const systemPrompt="You are an expert personal finance advisor in FinCommand. Use ONLY the user's actual numbers below. Be specific, concise, actionable. Under 220 words. Match their currency symbol.\n\nUSER DATA:\n"+dashboardContext+"\n\nRules: reference real numbers, suggest concrete steps, no generic advice, no specific fund recommendations.";
+
+    const systemPrompt=
+      "You are an expert personal finance advisor embedded in FinCommand, a financial dashboard app. "+
+      "You have access to the user's complete financial data below. "+
+      "Give specific, actionable, data-driven advice. Be direct, warm, and concise. "+
+      "Use numbers from their data. Format with short paragraphs. "+
+      "Never give generic advice — always tie it to their actual numbers.\n\n"+
+      "USER'S FINANCIAL SNAPSHOT:\n"+dashboardContext+"\n\n"+
+      "Rules:\n"+
+      "- Always reference specific numbers from their data\n"+
+      "- Be encouraging but honest about risks\n"+
+      "- Suggest concrete next steps\n"+
+      "- Keep responses under 250 words unless asked for detail\n"+
+      "- Use £/$ symbols matching their country currency\n"+
+      "- Never recommend specific investment products or funds";
+
+    // ── Route: Edge Function (production) or direct API (demo/dev) ──────────
+    const useEdge = IS_CONFIGURED;
+
     try {
-      let endpoint, headers, body;
+      // Get auth token to authenticate with the edge function
+      let authHeader = {};
       if(IS_CONFIGURED){
-        const sb=await getSb();
-        const{data:{session}}=await sb.auth.getSession();
-        endpoint=SUPABASE_URL+"/functions/v1/ai-advisor";
-        headers={"Content-Type":"application/json","apikey":SUPABASE_ANON,...(session?.access_token?{Authorization:"Bearer "+session.access_token}:{})};
-        body=JSON.stringify({system:systemPrompt,messages:newMessages.map(m=>({role:m.role,content:m.text}))});
-      } else {
-        endpoint="https://api.anthropic.com/v1/messages";
-        headers={"Content-Type":"application/json","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"};
-        body=JSON.stringify({model:"claude-sonnet-4-5",max_tokens:500,system:systemPrompt,messages:newMessages.map(m=>({role:m.role,content:m.text}))});
+        const sb = await getSb();
+        const { data:{ session } } = await sb.auth.getSession();
+        if(session?.access_token) authHeader = { "Authorization": "Bearer " + session.access_token };
       }
-      const res=await fetch(endpoint,{method:"POST",headers,body});
-      if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e?.error?.message||e?.message||"Error "+res.status);}
-      const data=await res.json();
-      const reply=data.content?.[0]?.text||data.reply||data.message||"No response. Check your Edge Function is deployed.";
-      setMessages(p=>[...p,{role:"assistant",text:reply}]);
-    } catch(e){
-      setError(e.message||"Connection issue. Deploy the Edge Function or check your API key.");
-    } finally { setLoading(false); }
+
+      const payload = {
+        system: systemPrompt,
+        messages: newMessages.filter(m=>m.role!=="system").map(m=>({role:m.role,content:m.text})),
+      };
+
+      const endpoint = useEdge
+        ? SUPABASE_URL+"/functions/v1/ai-advisor"
+        : "https://api.anthropic.com/v1/messages";
+
+      const headers = useEdge
+        ? { "Content-Type":"application/json", "apikey":SUPABASE_ANON, ...authHeader }
+        : { "Content-Type":"application/json","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true" };
+
+      const body = useEdge
+        ? JSON.stringify(payload)
+        : JSON.stringify({ model:"claude-sonnet-4-5", max_tokens:600, system:systemPrompt,
+            messages:newMessages.filter(m=>m.role!=="system").map(m=>({role:m.role,content:m.text})) });
+
+      const res = await fetch(endpoint, { method:"POST", headers, body });
+
+      if(!res.ok){
+        const errData = await res.json().catch(()=>({}));
+        const errMsg  = errData?.error?.message || errData?.message || ("Error "+res.status+(useEdge?" — check Edge Function is deployed.":" — check Anthropic API key."));
+        setError(errMsg);
+        setLoading(false);
+        return;
+      }
+
+      // ── Streaming response ─────────────────────────────────────────────────
+      // Edge function always streams — don't rely solely on content-type header
+      const ct = res.headers.get("content-type") || "";
+      const isStream = ct.includes("text/event-stream") || ct.includes("text/plain") || useEdge;
+      if(isStream && res.body){
+        const reader   = res.body.getReader();
+        const decoder  = new TextDecoder();
+        let   fullText = "";
+        let   buffer   = "";
+        setMessages(p=>[...p,{role:"assistant",text:""}]);
+        setLoading(false);
+        while(true){
+          const { done, value } = await reader.read();
+          if(done) break;
+          buffer += decoder.decode(value,{stream:true});
+          const parts = buffer.split("\n");
+          buffer = "";
+          for(const line of parts){
+            if(!line.startsWith("data:")) continue;
+            const raw = line.slice(5).trim();
+            if(raw==="[DONE]") break;
+            try{
+              const j = JSON.parse(raw);
+              const delta = j?.delta?.text || j?.choices?.[0]?.delta?.content || "";
+              if(delta){
+                fullText += delta;
+                setMessages(p=>{
+                  const copy=[...p];
+                  copy[copy.length-1]={role:"assistant",text:fullText};
+                  return copy;
+                });
+              }
+            }catch{}
+          }
+        }
+        setLoading(false);
+      } else {
+        // ── Non-streaming JSON response ──────────────────────────────────────
+        const data  = await res.json();
+        const reply = data.content?.[0]?.text || data.reply || data.message || "Sorry, I couldn't generate a response.";
+        setMessages(p=>[...p,{role:"assistant",text:reply}]);
+        setLoading(false);
+      }
+    } catch(e) {
+      setError("Connection issue — check your network or that the Edge Function is deployed.");
+      setLoading(false);
+    }
+  };
   };
 
   const isDark=["terminal","slate","midnight","autumn","westafrica","nigeria","london","newyork","tokyo","la"].includes(themeId);
@@ -1955,7 +2112,7 @@ function AIAdvisor({ dashboardContext, themeId, onClose }) {
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
               <div style={{width:28,height:28,borderRadius:"50%",background:"linear-gradient(135deg,"+T.accent+"44,"+T.purple+"33)",border:"1px solid "+T.accent+"33",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13}}>✨</div>
               <div style={{background:T.surface,border:"1px solid "+T.border+"66",borderRadius:"4px 12px 12px 12px",padding:"10px 16px",display:"flex",gap:5,alignItems:"center"}}>
-                {[0,1,2].map(i=><div key={i} style={{width:7,height:7,borderRadius:"50%",background:T.accent,opacity:0.6,animation:`fc-spin ${0.6+i*0.15}s ease-in-out infinite alternate`}} />)}
+                {[0,1,2].map(i=><div key={i} style={{width:7,height:7,borderRadius:"50%",background:T.accent,opacity:0.6,animation:"fc-spin "+(0.6+i*0.15)+"s ease-in-out infinite alternate"}} />)}
               </div>
             </div>
           )}
@@ -1990,6 +2147,7 @@ function AIAdvisor({ dashboardContext, themeId, onClose }) {
   );
 }
 
+
 class ErrorBoundary extends React.Component {
   constructor(p){super(p);this.state={error:null};}
   static getDerivedStateFromError(e){return{error:e};}
@@ -2006,7 +2164,9 @@ class ErrorBoundary extends React.Component {
   }
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
 // ROOT APP
+// ══════════════════════════════════════════════════════════════════════════════
 export default function App() {
   const [screen,  setScreen] =useState("loading");
   const [user,    setUser]   =useState(null);
@@ -2068,7 +2228,7 @@ export default function App() {
     <div style={{minHeight:"100vh",background:"#08090b",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"monospace",color:"#4a5568",flexDirection:"column",gap:14}}>
       <div className="fc-spin" style={{width:24,height:24,border:"2px solid #1e2329",borderTop:"2px solid #00c896",borderRadius:"50%"}} />
       <div style={{fontSize:11,letterSpacing:2}}>LOADING…</div>
-      <style>{`.fc-spin{animation:fc-spin .8s linear infinite}@keyframes fc-spin{to{transform:rotate(360deg)}}`}</style>
+      <style>{".fc-spin{animation:fc-spin .8s linear infinite}@keyframes fc-spin{to{transform:rotate(360deg)}}"}</style>
     </div>
   );
 
