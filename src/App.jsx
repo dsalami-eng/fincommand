@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback, useContext, createContext } from "react";
 
-// ── Global CSS ──────────────────────────────────────────────────────────────
 const GLOBAL_CSS = `
   *, *::before, *::after { box-sizing: border-box; }
   html, body, #root { width:100%; min-height:100%; margin:0; padding:0; }
@@ -39,12 +38,8 @@ const GLOBAL_CSS = `
 `;
 function GlobalStyles() { return <style dangerouslySetInnerHTML={{ __html: GLOBAL_CSS }} />; }
 
-// ══════════════════════════════════════════════════════════════════════════════
 // SUPABASE  — real by default, env-injectable
-// ══════════════════════════════════════════════════════════════════════════════
-// ── Configure these with your real Supabase project credentials ──────────────
 // Get them from: https://supabase.com/dashboard → Project → Settings → API
-const MOCK_MODE     = true;
 const SUPABASE_URL  = "https://cjgazhrxexjvztkzaujk.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNqZ2F6aHJ4ZXhqdnp0a3phdWprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5MTY0OTgsImV4cCI6MjA4ODQ5MjQ5OH0.2CB4zj-1z5RrS728vM87mq4rM1vnnxuahqE09HGuOXM";
 
@@ -98,37 +93,71 @@ async function onAuthChange(cb) {
   return () => subscription?.unsubscribe();
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// THEMES
-// ══════════════════════════════════════════════════════════════════════════════
+// THEMES — 13 themes across 3 categories
+const THEME_GROUPS = [
+  { id:"dark",    label:"Dark",    emoji:"🌙" },
+  { id:"light",   label:"Light",   emoji:"☀️" },
+  { id:"cities",  label:"Cities",  emoji:"🌆" },
+  { id:"culture", label:"Culture", emoji:"🌍" },
+];
 const THEMES = {
-  terminal: { id:"terminal", name:"Terminal", emoji:"🖥️",
-    bg:"#08090b", surface:"#0f1114", card:"#141719", border:"#1e2329",
-    text:"#e8eaf0", muted:"#4a5568", faint:"#1a1f26",
-    green:"#00c896", red:"#ff4d6d", amber:"#f5a623", blue:"#4d9fff", purple:"#b57bee", accent:"#00c896" },
-  spring: { id:"spring", name:"Spring", emoji:"🌸",
-    bg:"#f7f4f0", surface:"#ede8e2", card:"#ffffff", border:"#d9cfc6",
-    text:"#2d2420", muted:"#8a7d74", faint:"#e8e0d8",
-    green:"#3a8e54", red:"#c96b6b", amber:"#c8883a", blue:"#4a7fb0", purple:"#9b72b0", accent:"#c84580" },
-  autumn: { id:"autumn", name:"Autumn", emoji:"🍂",
-    bg:"#1a1208", surface:"#251a0a", card:"#2e2010", border:"#3d2e15",
-    text:"#f0e0c0", muted:"#8a7050", faint:"#3a2a12",
-    green:"#8ab840", red:"#e05030", amber:"#e08020", blue:"#7090c0", purple:"#b06890", accent:"#e08020" },
-  westafrica: { id:"westafrica", name:"Kente", emoji:"🇬🇭",
-    bg:"#0e0a02", surface:"#1a1404", card:"#221c06", border:"#332a08",
-    text:"#fef0c0", muted:"#907840", faint:"#2a2208",
-    green:"#40a840", red:"#e03010", amber:"#f0a800", blue:"#2080c0", purple:"#9840c0", accent:"#f0a800" },
-  nigeria: { id:"nigeria", name:"Naija", emoji:"🇳🇬",
-    bg:"#061006", surface:"#0c1e0c", card:"#112811", border:"#1a3a1a",
-    text:"#d8f0d8", muted:"#4e7e4e", faint:"#162416",
-    green:"#22d822", red:"#ff5022", amber:"#f8d000", blue:"#3878ff", purple:"#c050d8", accent:"#22d822" },
+  terminal: { id:"terminal", name:"Terminal", emoji:"🖥️", group:"dark",
+  bg:"#08090b", surface:"#0f1114", card:"#141719", border:"#1e2329",
+  text:"#e8eaf0", muted:"#4a5568", faint:"#1a1f26",
+  green:"#00c896", red:"#ff4d6d", amber:"#f5a623", blue:"#4d9fff", purple:"#b57bee", accent:"#00c896" },
+  slate: { id:"slate", name:"Slate", emoji:"🌫️", group:"dark",
+  bg:"#0d1117", surface:"#161b22", card:"#1c2230", border:"#21293a",
+  text:"#cdd9e5", muted:"#546e7a", faint:"#1a2233",
+  green:"#3fb950", red:"#f85149", amber:"#d29922", blue:"#58a6ff", purple:"#bc8cff", accent:"#58a6ff" },
+  midnight: { id:"midnight", name:"Midnight", emoji:"🌌",  group:"dark",
+  bg:"#04050f", surface:"#080c1e", card:"#0d1230", border:"#141a3a",
+  text:"#c8d6f0", muted:"#3a4870", faint:"#0b1028",
+  green:"#00e5a0", red:"#ff4466", amber:"#ffa040", blue:"#6090ff", purple:"#a060ff", accent:"#6090ff" },
+  spring: { id:"spring", name:"Spring", emoji:"🌸", group:"light",
+  bg:"#f7f4f0", surface:"#ede8e2", card:"#ffffff", border:"#d9cfc6",
+  text:"#2d2420", muted:"#8a7d74", faint:"#e8e0d8",
+  green:"#3a8e54", red:"#c96b6b", amber:"#c8883a", blue:"#4a7fb0", purple:"#9b72b0", accent:"#c84580" },
+  summer: { id:"summer", name:"Summer", emoji:"☀️", group:"light",
+  bg:"#fffbf2", surface:"#fff4dc", card:"#ffffff", border:"#f0dba0",
+  text:"#2a1e00", muted:"#a07828", faint:"#fff0c8",
+  green:"#28a060", red:"#e04040", amber:"#f0a000", blue:"#2878c8", purple:"#8858b8", accent:"#e08000" },
+  winter: { id:"winter", name:"Winter", emoji:"❄️", group:"light",
+  bg:"#f0f4f8", surface:"#e4edf6", card:"#ffffff", border:"#c8d8ec",
+  text:"#1a2840", muted:"#5a7898", faint:"#dce8f4",
+  green:"#0a8060", red:"#c84040", amber:"#c87820", blue:"#1460b0", purple:"#5848a0", accent:"#1460b0" },
+  london: { id:"london", name:"London", emoji:"🇬🇧", group:"cities",
+  bg:"#0f1318", surface:"#161c24", card:"#1c2530", border:"#253040",
+  text:"#d8dde5", muted:"#50607a", faint:"#18222e",
+  green:"#4aaa7c", red:"#cc4455", amber:"#c8920a", blue:"#4a8acc", purple:"#8878cc", accent:"#4a8acc" },
+  newyork: { id:"newyork", name:"New York", emoji:"🗽", group:"cities",
+  bg:"#0a0a0f", surface:"#111118", card:"#18181f", border:"#24242e",
+  text:"#e8e8f0", muted:"#505068", faint:"#14141c",
+  green:"#00cc88", red:"#ff3355", amber:"#ffa800", blue:"#4488ff", purple:"#cc44ff", accent:"#ffa800" },
+  tokyo: { id:"tokyo", name:"Tokyo", emoji:"🗼", group:"cities",
+  bg:"#0a0818", surface:"#110d28", card:"#161238", border:"#1e1848",
+  text:"#e8d8f8", muted:"#5848a8", faint:"#130f30",
+  green:"#00e8a8", red:"#ff2060", amber:"#ff9820", blue:"#40b0ff", purple:"#c030ff", accent:"#c030ff" },
+  la: { id:"la", name:"Los Angeles", emoji:"🌴", group:"cities",
+  bg:"#0c0a06", surface:"#181408", card:"#221c0a", border:"#302814",
+  text:"#f8f0d8", muted:"#807050", faint:"#1e1808",
+  green:"#50c858", red:"#ff5028", amber:"#ffc030", blue:"#30a8e8", purple:"#c050d8", accent:"#ffc030" },
+  autumn: { id:"autumn", name:"Autumn", emoji:"🍂", group:"culture",
+  bg:"#1a1208", surface:"#251a0a", card:"#2e2010", border:"#3d2e15",
+  text:"#f0e0c0", muted:"#8a7050", faint:"#3a2a12",
+  green:"#8ab840", red:"#e05030", amber:"#e08020", blue:"#7090c0", purple:"#b06890", accent:"#e08020" },
+  westafrica: { id:"westafrica", name:"Kente", emoji:"🇬🇭", group:"culture",
+  bg:"#0e0a02", surface:"#1a1404", card:"#221c06", border:"#332a08",
+  text:"#fef0c0", muted:"#907840", faint:"#2a2208",
+  green:"#40a840", red:"#e03010", amber:"#f0a800", blue:"#2080c0", purple:"#9840c0", accent:"#f0a800" },
+  nigeria: { id:"nigeria", name:"Naija", emoji:"🇳🇬", group:"culture",
+  bg:"#061006", surface:"#0c1e0c", card:"#112811", border:"#1a3a1a",
+  text:"#d8f0d8", muted:"#4e7e4e", faint:"#162416",
+  green:"#22d822", red:"#ff5022", amber:"#f8d000", blue:"#3878ff", purple:"#c050d8", accent:"#22d822" },
 };
 const ThemeCtx = createContext(THEMES.terminal);
 const useTheme = () => useContext(ThemeCtx);
 
-// ══════════════════════════════════════════════════════════════════════════════
 // TAX ENGINE
-// ══════════════════════════════════════════════════════════════════════════════
 const TAX_CONFIGS = {
   US:{ name:"United States", flag:"🇺🇸", currency:"USD", symbol:"$",  fxToUSD:1,
     brackets:[{up:11600,r:.10},{up:47150,r:.12},{up:100525,r:.22},{up:191950,r:.24},{up:243725,r:.32},{up:609350,r:.35},{up:Infinity,r:.37}],
@@ -173,9 +202,7 @@ function calcTax(country, grossAnnual, bonusAnnual) {
   return { netSalary:Math.round((grossAnnual/12)*r), netBonus:Math.round((bonusAnnual/12)*r), effectiveRate:(totalTax/total*100).toFixed(1), annualTax:Math.round(totalTax) };
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
 // CONSTANTS & HELPERS
-// ══════════════════════════════════════════════════════════════════════════════
 const TARGET_USD = 1900000;
 const fv = (mo,rate,yrs) => { if(mo<=0||yrs<=0)return 0; const r=rate/12; return mo*((Math.pow(1+r,yrs*12)-1)/r)*(1+r); };
 const sum = (arr,key) => (arr||[]).filter(i=>!i.excluded).reduce((s,i)=>s+(Number(i[key])||0),0);
@@ -251,9 +278,7 @@ function niceMax(v) {
   return 10*mag;
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
 // PRIMITIVE COMPONENTS
-// ══════════════════════════════════════════════════════════════════════════════
 function Lbl({ children, color }) {
   const T=useTheme();
   return <div style={{fontSize:10,letterSpacing:1.5,textTransform:"uppercase",color:color||T.muted,marginBottom:6}}>{children}</div>;
@@ -322,9 +347,7 @@ function Spinner() {
   return <div className="fc-spin" style={{width:16,height:16,border:"2px solid "+T.border,borderTop:"2px solid "+T.accent,borderRadius:"50%",display:"inline-block"}} />;
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
 // INLINE EDIT FIELD — click-to-edit for any cell
-// ══════════════════════════════════════════════════════════════════════════════
 function InlineEdit({ value, onCommit, type="text", style={}, placeholder="" }) {
   const T=useTheme();
   const [editing,setEditing]=useState(false);
@@ -353,9 +376,7 @@ function InlineEdit({ value, onCommit, type="text", style={}, placeholder="" }) 
   );
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// THEME PICKER
-// ══════════════════════════════════════════════════════════════════════════════
+// THEME PICKER — grouped with 13 themes
 function ThemePicker({ current, onChange }) {
   const T=useTheme(); const [open,setOpen]=useState(false);
   const ref=useRef(null);
@@ -363,36 +384,46 @@ function ThemePicker({ current, onChange }) {
     const h=e=>{ if(ref.current&&!ref.current.contains(e.target))setOpen(false); };
     document.addEventListener("mousedown",h); return ()=>document.removeEventListener("mousedown",h);
   },[]);
+  const cur=THEMES[current]||THEMES.terminal;
   return (
     <div ref={ref} style={{position:"relative"}}>
       <button onClick={()=>setOpen(o=>!o)} style={{background:T.faint,border:"1px solid "+T.border,color:T.text,borderRadius:8,padding:"5px 10px",cursor:"pointer",fontSize:11,fontFamily:"monospace",display:"flex",alignItems:"center",gap:6}}>
-        <span>{THEMES[current].emoji}</span>
-        <span style={{color:T.muted}}>{THEMES[current].name}</span>
+        <span>{cur.emoji}</span>
+        <span style={{color:T.muted}}>{cur.name}</span>
         <span style={{color:T.muted,fontSize:9}}>▼</span>
       </button>
       {open&&(
-        <div style={{position:"absolute",right:0,top:"calc(100% + 6px)",background:T.card,border:"1px solid "+T.border,borderRadius:10,padding:6,zIndex:200,minWidth:165,boxShadow:"0 8px 32px #00000055"}}>
-          {Object.values(THEMES).map(th=>(
-            <div key={th.id} onClick={()=>{onChange(th.id);setOpen(false);}}
-              style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderRadius:7,cursor:"pointer",
-                background:current===th.id?th.accent+"1a":"transparent",
-                border:current===th.id?"1px solid "+th.accent+"44":"1px solid transparent",marginBottom:3}}>
-              <span style={{fontSize:15}}>{th.emoji}</span>
-              <span style={{fontSize:11,fontFamily:"monospace",color:current===th.id?th.accent:T.text,fontWeight:current===th.id?700:400}}>{th.name}</span>
-              <div style={{marginLeft:"auto",display:"flex",gap:3}}>
-                {[th.green,th.accent,th.amber,th.red].map((c,i)=><div key={i} style={{width:7,height:7,borderRadius:"50%",background:c}} />)}
+        <div style={{position:"absolute",right:0,top:"calc(100% + 6px)",background:T.card,border:"1px solid "+T.border,borderRadius:12,padding:"10px",zIndex:300,width:340,boxShadow:"0 12px 40px #00000066",maxHeight:"80vh",overflowY:"auto"}}>
+          {THEME_GROUPS.map(grp=>{
+            const inGroup=Object.values(THEMES).filter(t=>t.group===grp.id);
+            if(!inGroup.length) return null;
+            return (
+              <div key={grp.id} style={{marginBottom:10}}>
+                <div style={{fontSize:9,letterSpacing:2,textTransform:"uppercase",color:T.muted,marginBottom:6,paddingLeft:4}}>{grp.emoji} {grp.label}</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4}}>
+                  {inGroup.map(th=>(
+                    <div key={th.id} onClick={()=>{onChange(th.id);setOpen(false);}}
+                      style={{display:"flex",alignItems:"center",gap:7,padding:"7px 9px",borderRadius:8,cursor:"pointer",
+                        background:current===th.id?th.accent+"1a":"transparent",
+                        border:"1px solid "+(current===th.id?th.accent+"55":T.border+"44"),transition:"all 0.1s"}}>
+                      <span style={{fontSize:14}}>{th.emoji}</span>
+                      <span style={{fontSize:11,fontFamily:"monospace",color:current===th.id?th.accent:T.text,fontWeight:current===th.id?700:400,flex:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{th.name}</span>
+                      <div style={{display:"flex",gap:2,flexShrink:0}}>
+                        {[th.accent,th.blue,th.amber,th.green].map((c,i)=><div key={i} style={{width:6,height:6,borderRadius:"50%",background:c}} />)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
   );
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
 // EDITABLE TABLE — full inline name & value editing + slider
-// ══════════════════════════════════════════════════════════════════════════════
 function EditableTable({ title, icon, items, setItems, accentColor, sliderMax }) {
   const T=useTheme(); const sMax=sliderMax||5000;
   const [adding,setAdding]=useState(false);
@@ -479,9 +510,7 @@ function EditableTable({ title, icon, items, setItems, accentColor, sliderMax })
   );
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
 // SAVINGS SECTION
-// ══════════════════════════════════════════════════════════════════════════════
 function SavingsSection({ buckets, setBuckets }) {
   const T=useTheme();
   const [adding,setAdding]=useState(false);
@@ -548,9 +577,7 @@ function SavingsSection({ buckets, setBuckets }) {
   );
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
 // PROJECTION CHART
-// ══════════════════════════════════════════════════════════════════════════════
 function ProjChart({ monthlySavings, netBonus, includeBonus, intervalMode, fmtK }) {
   const T=useTheme();
   const [hovIdx,setHovIdx]=useState(null);
@@ -625,9 +652,7 @@ function ProjChart({ monthlySavings, netBonus, includeBonus, intervalMode, fmtK 
   );
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
 // CASHFLOW TAB — inspired by 18M Cashflow spreadsheet
-// ══════════════════════════════════════════════════════════════════════════════
 function CashflowTab({ cashflow, setCashflow, monthlyIncome, monthlyExpenses, monthlySavings, fmt, fmtK }) {
   const T=useTheme();
   const [addingOneOff,setAddingOneOff]=useState(null); // monthId
@@ -826,9 +851,7 @@ function CashflowTab({ cashflow, setCashflow, monthlyIncome, monthlyExpenses, mo
   );
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
 // HEALTH SCORE
-// ══════════════════════════════════════════════════════════════════════════════
 function HealthScore({ savingsRate, housingPct, totalExpenses, netIncome }) {
   const T=useTheme();
   const expRatio=netIncome>0?totalExpenses/netIncome:0;
@@ -855,18 +878,20 @@ function HealthScore({ savingsRate, housingPct, totalExpenses, netIncome }) {
   );
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
 // LANDING PAGE
-// ══════════════════════════════════════════════════════════════════════════════
 function LandingPage({ onGetStarted }) {
   const T=useTheme();
   const features=[
-    {icon:"🌍",title:"Multi-Country Tax Engine",  desc:"Accurate net income for US, UK, Canada, Australia & Germany — 2024/25 tax rates."},
-    {icon:"📅",title:"12-Month Cashflow Tracker",  desc:"Month-by-month cashflow with one-off expense tracking. See your cash floor before it hits."},
-    {icon:"📊",title:"Full Financial Dashboard",  desc:"Income, expenses, savings, projections and health analysis all in one unified view."},
-    {icon:"☁️",title:"Cloud Sync",                desc:"Sign in with Google or email. Auto-saves and syncs across every device instantly."},
-    {icon:"📈",title:"30-Year Net Worth Projections",desc:"Configurable chart with hover tooltips, $1.9M target line, and detailed breakdowns."},
-    {icon:"🎨",title:"5 Colour Themes",           desc:"Terminal, Spring, Autumn, Kente & Naija — pick the vibe that feels right for you."},
+    {icon:"🌍",title:"Multi-Country Tax Engine",      desc:"Accurate net income for US, UK, Canada, Australia & Germany — 2024/25 tax rates."},
+    {icon:"📅",title:"12-Month Cashflow Tracker",     desc:"Month-by-month cashflow with one-off expense tracking. See your cash floor before it hits."},
+    {icon:"✨",title:"AI Finance Advisor",            desc:"Ask Claude AI anything about your finances. It answers using your actual numbers."},
+    {icon:"💡",title:"Finance Glossary",             desc:"28 terms in plain English. Tap the lightbulb anytime — no jargon left unexplained."},
+    {icon:"📋",title:"Tax Year Report",              desc:"One-page printable annual summary — gross, net, total tax paid, effective rate."},
+    {icon:"☁️",title:"Cloud Sync",                   desc:"Sign in with Google, Apple, or Microsoft. Auto-saves and syncs across every device."},
+    {icon:"📈",title:"30-Year Net Worth Projections", desc:"Configurable chart with hover tooltips, $1.9M target line, and detailed breakdowns."},
+    {icon:"🎨",title:"13 Themes",                    desc:"Dark, light, city, and culture themes — Terminal, Tokyo, LA, London, NYC and more."},
+    {icon:"🔐",title:"Private & Secure",              desc:"Row-level security means only you can ever see your financial data."},
+    {icon:"📊",title:"Full Financial Dashboard",      desc:"Income, expenses, savings, projections and health analysis all in one unified view."},
   ];
   return (
     <div style={{minHeight:"100vh",background:T.bg,color:T.text,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif",display:"flex",flexDirection:"column"}}>
@@ -909,9 +934,7 @@ function LandingPage({ onGetStarted }) {
   );
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
 // AUTH PAGE — real sign-up/sign-in/google/password reset
-// ══════════════════════════════════════════════════════════════════════════════
 function AuthPage({ onBack, onAuthSuccess }) {
   const T=useTheme();
   const [mode,setMode]=useState("signin"); // signin | signup | reset
@@ -952,8 +975,19 @@ function AuthPage({ onBack, onAuthSuccess }) {
     const{error:e}=await db.signInGoogle();
     if(e){ setError(typeof e==="string"?e:e?.message||"Google sign-in failed."); setLoading(false); return; }
     if(!IS_CONFIGURED) await onAuthSuccess();
-    // If real, Supabase redirects to Google — auth state listener picks it up
     setLoading(false);
+  };
+  const handleApple=async()=>{
+    setLoading(true);setError("");
+    if(!IS_CONFIGURED){ await onAuthSuccess(); setLoading(false); return; }
+    try{ const sb=await getSb(); const{error:e}=await sb.auth.signInWithOAuth({provider:"apple",options:{redirectTo:window.location.origin}}); if(e)throw e; }
+    catch(e){ setError(e?.message||"Apple sign-in failed."); setLoading(false); }
+  };
+  const handleAzure=async()=>{
+    setLoading(true);setError("");
+    if(!IS_CONFIGURED){ await onAuthSuccess(); setLoading(false); return; }
+    try{ const sb=await getSb(); const{error:e}=await sb.auth.signInWithOAuth({provider:"azure",options:{redirectTo:window.location.origin,scopes:"email profile openid"}}); if(e)throw e; }
+    catch(e){ setError(e?.message||"Microsoft sign-in failed."); setLoading(false); }
   };
 
   const canSubmit = email.trim()&&(mode==="reset"||password.trim())&&!loading;
@@ -973,15 +1007,29 @@ function AuthPage({ onBack, onAuthSuccess }) {
         </div>
 
         <div style={{background:T.card,border:"1px solid "+T.border,borderRadius:16,padding:"28px"}}>
-          {/* Google OAuth */}
+          {/* Social OAuth */}
           {mode!=="reset"&&(
             <>
-              <button onClick={handleGoogle} disabled={loading}
-                style={{width:"100%",background:T.surface,border:"1px solid "+T.border,color:T.text,borderRadius:10,padding:"13px",cursor:loading?"not-allowed":"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:18,transition:"background 0.15s",opacity:loading?0.7:1}}>
-                {loading?<Spinner />:<svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>}
-                <span>Continue with Google</span>
-              </button>
-              <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:18}}>
+              <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
+                <button onClick={handleGoogle} disabled={loading}
+                  style={{width:"100%",background:T.surface,border:"1px solid "+T.border,color:T.text,borderRadius:10,padding:"12px",cursor:loading?"not-allowed":"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:10,transition:"background 0.15s",opacity:loading?0.7:1}}>
+                  {loading?<Spinner />:<svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>}
+                  <span>Continue with Google</span>
+                </button>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                  <button onClick={handleApple} disabled={loading}
+                    style={{background:T.surface,border:"1px solid "+T.border,color:T.text,borderRadius:10,padding:"11px",cursor:loading?"not-allowed":"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",gap:8,opacity:loading?0.7:1}}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill={T.text}><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+                    Apple
+                  </button>
+                  <button onClick={handleAzure} disabled={loading}
+                    style={{background:T.surface,border:"1px solid "+T.border,color:T.text,borderRadius:10,padding:"11px",cursor:loading?"not-allowed":"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",gap:8,opacity:loading?0.7:1}}>
+                    <svg width="16" height="16" viewBox="0 0 23 23"><path fill="#f3f3f3" d="M0 0h11v11H0z"/><path fill="#f35325" d="M12 0h11v11H12z"/><path fill="#05a6f0" d="M0 12h11v11H0z"/><path fill="#ffba08" d="M12 12h11v11H12z"/></svg>
+                    Microsoft
+                  </button>
+                </div>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
                 <div style={{flex:1,height:1,background:T.border}} />
                 <span style={{fontSize:11,color:T.muted,letterSpacing:2,textTransform:"uppercase"}}>or</span>
                 <div style={{flex:1,height:1,background:T.border}} />
@@ -1045,9 +1093,7 @@ function AuthPage({ onBack, onAuthSuccess }) {
   );
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
 // ONBOARDING
-// ══════════════════════════════════════════════════════════════════════════════
 function OnboardingPage({ user, onComplete }) {
   const T=useTheme();
   const [step,setStep]=useState(0);
@@ -1147,9 +1193,7 @@ function OnboardingPage({ user, onComplete }) {
   );
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
 // INCOME TABLE — with inline edit
-// ══════════════════════════════════════════════════════════════════════════════
 function IncomeTable({ items, setCustomIncome, inclBonus, setInclBonus, totalIncome, fmt }) {
   const T=useTheme();
   const [adding,setAdding]=useState(false);
@@ -1232,14 +1276,16 @@ function IncomeTable({ items, setCustomIncome, inclBonus, setInclBonus, totalInc
   );
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
 // DASHBOARD
-// ══════════════════════════════════════════════════════════════════════════════
 function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChange }) {
   const T=useTheme();
   const country=profile?.country||"US";
   const cfg=TAX_CONFIGS[country]||TAX_CONFIGS.US;
   const {fmt,fmtK}=useMemo(()=>buildFmt(cfg.symbol),[cfg.symbol]);
+
+  const [showGlossary,  setShowGlossary ]=useState(false);
+  const [showAI,        setShowAI       ]=useState(false);
+  const [showTaxReport, setShowTaxReport]=useState(false);
 
   const [tab,         setTab]        =useState("overview");
   const [inclBonus,   setInclBonus]  =useState(initialData?.inclBonus??false);
@@ -1337,6 +1383,18 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
           <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:7}}>
             <div style={{fontSize:10,letterSpacing:1.5,color:si.color,minHeight:13,transition:"color 0.3s",fontFamily:"monospace"}}>{si.label}</div>
             <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
+              {/* Tax Year Report */}
+              <button onClick={()=>setShowTaxReport(true)} title="Tax Year Summary" style={{background:T.faint,border:"1px solid "+T.border,color:T.amber,borderRadius:8,padding:"5px 11px",cursor:"pointer",fontSize:11,fontFamily:"monospace",display:"flex",alignItems:"center",gap:5,letterSpacing:0.5}}>
+                📋 <span>Tax Report</span>
+              </button>
+              {/* Glossary */}
+              <button onClick={()=>setShowGlossary(true)} title="Finance Glossary" style={{background:T.faint,border:"1px solid "+T.border,color:T.muted,borderRadius:8,padding:"5px 9px",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",width:32,height:32}} aria-label="Glossary">
+                💡
+              </button>
+              {/* AI Advisor */}
+              <button onClick={()=>setShowAI(true)} title="AI Finance Advisor" style={{background:"linear-gradient(135deg,"+T.accent+"22,"+T.purple+"18)",border:"1px solid "+T.accent+"44",color:T.accent,borderRadius:8,padding:"5px 11px",cursor:"pointer",fontSize:11,fontFamily:"monospace",display:"flex",alignItems:"center",gap:5,fontWeight:700}}>
+                ✨ <span>Ask AI</span>
+              </button>
               <ThemePicker current={themeId} onChange={onThemeChange} />
               <span style={{fontSize:11,color:T.muted,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user?.email}</span>
               <button onClick={onSignOut} style={{background:"transparent",border:"1px solid "+T.border+"66",color:T.muted,borderRadius:6,padding:"5px 12px",cursor:"pointer",fontSize:11}}>Sign Out</button>
@@ -1627,13 +1685,311 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
           For personal planning purposes only · Not financial advice · FinCommand 2026
         </footer>
       </div>
+
+      {/* ── OVERLAYS ───────────────────────────────────────────────────────── */}
+      {showGlossary&&<GlossaryPanel onClose={()=>setShowGlossary(false)} />}
+
+      {showTaxReport&&<TaxYearReport
+        profile={profile} grossSalary={grossSalary} annualBonus={annualBonus}
+        inclBonus={inclBonus} netSalary={netSalary} netBonus={netBonus}
+        effectiveRate={effectiveRate} totalSavings={savings}
+        totalExpenses={expenses} totalIncome={income} fmt={fmt}
+        onClose={()=>setShowTaxReport(false)} />}
+
+      {showAI&&<AIAdvisor
+        onClose={()=>setShowAI(false)}
+        themeId={themeId}
+        dashboardContext={JSON.stringify({
+          name:profile?.name, country:country, currency:cfg.currency, symbol:cfg.symbol,
+          grossSalary, annualBonus, inclBonus,
+          netSalary:Math.round(netSalary), netBonus:Math.round(netBonus),
+          effectiveRate, totalIncome:Math.round(income),
+          totalExpenses:Math.round(expenses), totalSavings:Math.round(savings),
+          savingsRate:income>0?Math.round(savings/income*100):0,
+          usdBalance, emergencyFundTarget:Math.round(expenses*6),
+          cashRunwayMonths:expenses>0?Math.round(usdBalance/expenses):0,
+          housingPct:income>0?Math.round((fixedItems.find(f=>f.name?.toLowerCase().includes("rent")||f.name?.toLowerCase().includes("mortgage"))?.amount||0)/income*100):0,
+          netWorthProjection30yr:Math.round(usdBalance*Math.pow(1.07,30)+savings*12*((Math.pow(1.07,30)-1)/0.07)),
+          fixedExpenses:fixedItems.map(i=>({name:i.name,amount:i.amount})),
+          variableExpenses:varItems.map(i=>({name:i.name,amount:i.amount})),
+          savingsBuckets:savBuckets.map(i=>({name:i.name,amount:i.amount})),
+        },null,2)}
+      />}
     </div>
   );
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// ERROR BOUNDARY
-// ══════════════════════════════════════════════════════════════════════════════
+// GLOSSARY — lightbulb icon panel with plain-English financial definitions
+const GLOSSARY_TERMS = [ { term:"Net Income", cat:"Income", def:"Your take-home pay after all taxes are deducted. The actual money that lands in your bank account each month." }, { term:"Gross Salary", cat:"Income", def:"Your salary before any tax or deductions. The number on your job offer letter." }, { term:"Effective Tax Rate", cat:"Tax", def:"The overall percentage of your total income you pay in tax — not your top bracket rate. If you earn $100k and pay $22k in tax, your effective rate is 22%." }, { term:"Marginal Tax Rate", cat:"Tax", def:"The tax rate applied only to your next pound/dollar of income. Earning £1,000 more doesn't mean everything gets taxed at the higher rate — only that extra £1,000 does." }, { term:"FICA", cat:"Tax", def:"US payroll taxes: Social Security (6.2%) and Medicare (1.45%) that are automatically deducted from your US payslip." }, { term:"National Insurance", cat:"Tax", def:"UK payroll contributions (similar to US FICA) that fund state pension and NHS. You pay 8% on earnings between £12,570–£50,270." }, { term:"Monthly Surplus", cat:"Budgeting", def:"What's left over each month after paying all expenses and hitting your savings targets. Positive = you're building wealth. Negative = spending more than you earn." }, { term:"Cash Runway", cat:"Budgeting", def:"How many months you could cover all your expenses using only your current liquid savings, with no income. 6 months is the gold standard emergency buffer." }, { term:"Savings Rate", cat:"Budgeting", def:"The percentage of your net income you save each month. A 20% rate is considered good; 30%+ is strong for wealth building." }, { term:"Housing Ratio", cat:"Budgeting", def:"The percentage of your net income spent on rent or mortgage. Financial rules of thumb suggest keeping this below 30%." }, { term:"Emergency Fund", cat:"Savings", def:"A dedicated cash reserve set aside purely for unexpected events — job loss, medical bills, urgent repairs. Separate from investment savings." }, { term:"Index Funds", cat:"Investing", def:"Investment funds that track a market index (like the S&P 500). Low-cost, diversified, and historically outperform most active fund managers over time." }, { term:"401(k) / Pension", cat:"Investing", def:"Tax-advantaged retirement savings accounts. Contributions often reduce your taxable income now, and the money grows tax-free until retirement." }, { term:"Compound Interest", cat:"Investing", def:"Earning returns on your returns. A £10k investment growing at 7%/year becomes ~£19.7k in 10 years — not from adding money, but because growth builds on itself." }, { term:"7% Return Assumption", cat:"Investing", def:"The historical average annual real return of a globally diversified stock portfolio over long periods, after adjusting for inflation. Used as a conservative planning benchmark." }, { term:"Net Worth", cat:"Wealth", def:"Everything you own (assets) minus everything you owe (liabilities). Your salary doesn't build wealth — your net worth does." }, { term:"Liquidity", cat:"Wealth", def:"How quickly you can turn an asset into cash without losing much value. Cash is fully liquid; property is illiquid. Liquid savings = accessible money." }, { term:"Asset Allocation", cat:"Investing", def:"How you divide investments across categories like stocks, bonds, property, and cash. Your allocation determines your risk/return profile." }, { term:"Negative Gearing", cat:"Tax", def:"(Australia) When your rental income is less than the property costs — the loss can offset other taxable income, reducing your total tax bill." }, { term:"Foreign Tax Credit", cat:"Tax", def:"A US tax mechanism that prevents double-taxation on income you've already paid tax on in another country — relevant if you have UK income and a US tax obligation." }, { term:"Self Assessment", cat:"Tax", def:"The UK annual tax filing process for people with income not taxed at source (rental income, freelance, overseas income). Deadline: January 31st." }, { term:"Non-Resident Landlord Scheme (NRLS)", cat:"Tax", def:"UK scheme requiring tenants/agents to deduct basic rate tax from rental payments to landlords living abroad, unless HMRC has approved gross payment." }, { term:"Projected Surplus", cat:"Cashflow", def:"How much cash you're expected to have left at the end of the month after all planned income and expenses — before one-off costs." }, { term:"One-Off Expenses", cat:"Cashflow", def:"Non-recurring costs in a given month — holiday, car service, new appliance, moving costs. These don't appear every month but can significantly impact your cash position." }, { term:"Closing Balance", cat:"Cashflow", def:"The amount of liquid cash you're projected to have at the end of a given month, after all income, expenses, savings, and one-offs." }, { term:"$1.9M Target", cat:"Wealth", def:"FinCommand's default net worth target — approximately £1.5M — based on the 4% safe withdrawal rule needing ~£60k/yr in retirement to maintain a comfortable lifestyle in a major city." }, { term:"Dollar-Cost Averaging", cat:"Investing", def:"Investing a fixed amount at regular intervals regardless of market conditions. Removes the impossible task of timing the market and smooths out volatility over time." }, { term:"Capital Gains", cat:"Tax", def:"Profit made when you sell an asset for more than you paid for it — shares, property, crypto. Often taxed differently (usually lower) than regular income." },
+];
+
+function GlossaryPanel({ onClose }) {
+  const T=useTheme();
+  const [search,setSearch]=useState("");
+  const [cat,setCat]=useState("All");
+  const cats=["All",...[...new Set(GLOSSARY_TERMS.map(g=>g.cat))]];
+  const filtered=GLOSSARY_TERMS.filter(g=>{
+    const matchCat=cat==="All"||g.cat===cat;
+    const matchSearch=!search.trim()||g.term.toLowerCase().includes(search.toLowerCase())||g.def.toLowerCase().includes(search.toLowerCase());
+    return matchCat&&matchSearch;
+  });
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"flex-start",justifyContent:"flex-end",padding:"60px 20px 20px"}}>
+      {/* Backdrop */}
+      <div onClick={onClose} style={{position:"absolute",inset:0,background:"#00000066",backdropFilter:"blur(4px)"}} />
+      {/* Panel */}
+      <div style={{position:"relative",width:"100%",maxWidth:500,maxHeight:"calc(100vh - 80px)",background:T.card,border:"1px solid "+T.border,borderRadius:16,display:"flex",flexDirection:"column",boxShadow:"0 24px 64px #00000077",overflow:"hidden"}}>
+        {/* Header */}
+        <div style={{padding:"18px 20px 14px",borderBottom:"1px solid "+T.border,background:T.surface,flexShrink:0}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <div style={{width:32,height:32,background:T.amber+"22",border:"1px solid "+T.amber+"44",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>💡</div>
+              <div>
+                <div style={{fontSize:14,fontWeight:700,color:T.text}}>Finance Glossary</div>
+                <div style={{fontSize:11,color:T.muted}}>{GLOSSARY_TERMS.length} terms · plain English</div>
+              </div>
+            </div>
+            <button onClick={onClose} style={{background:"transparent",border:"1px solid "+T.border,color:T.muted,borderRadius:8,width:30,height:30,cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+          </div>
+          <input placeholder="Search terms…" value={search} onChange={e=>setSearch(e.target.value)}
+            style={{width:"100%",background:T.faint,border:"1px solid "+T.border,borderRadius:8,padding:"9px 12px",color:T.text,fontFamily:"inherit",fontSize:13,outline:"none",boxSizing:"border-box",marginBottom:10}} />
+          <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+            {cats.map(c=>(
+              <button key={c} onClick={()=>setCat(c)}
+                style={{background:cat===c?T.amber+"22":"transparent",border:"1px solid "+(cat===c?T.amber+"66":T.border+"66"),color:cat===c?T.amber:T.muted,borderRadius:20,padding:"4px 10px",cursor:"pointer",fontSize:10,fontFamily:"monospace",letterSpacing:0.5,fontWeight:cat===c?700:400}}>
+                {c}
+              </button>
+            ))}
+          </div>
+        </div>
+        {/* Terms list */}
+        <div style={{overflowY:"auto",flex:1,padding:"12px 0"}}>
+          {filtered.length===0&&<div style={{padding:"20px",textAlign:"center",color:T.muted,fontSize:13}}>No matching terms</div>}
+          {filtered.map((g,i)=>(
+            <div key={g.term} style={{padding:"12px 20px",borderBottom:i<filtered.length-1?"1px solid "+T.border+"44":"none",transition:"background 0.1s"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
+                <span style={{fontSize:12,fontWeight:700,color:T.text,fontFamily:"monospace"}}>{g.term}</span>
+                <span style={{fontSize:9,letterSpacing:1.2,textTransform:"uppercase",color:T.amber,background:T.amber+"18",padding:"2px 7px",borderRadius:10,fontFamily:"monospace"}}>{g.cat}</span>
+              </div>
+              <p style={{margin:0,fontSize:12,color:T.muted,lineHeight:1.75}}>{g.def}</p>
+            </div>
+          ))}
+        </div>
+        <div style={{padding:"10px 20px",borderTop:"1px solid "+T.border,fontSize:10,color:T.muted,textAlign:"center",flexShrink:0}}>
+          Definitions are simplified for educational purposes only
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// TAX YEAR SUMMARY REPORT (Enhancement #9)
+function TaxYearReport({ profile, grossSalary, annualBonus, inclBonus, netSalary, netBonus, effectiveRate, totalSavings, totalExpenses, totalIncome, fmt, onClose }) {
+  const T=useTheme();
+  const cfg=TAX_CONFIGS[profile?.country||"US"]||TAX_CONFIGS.US;
+  const { annualTax }=useMemo(()=>calcTax(profile?.country||"US",grossSalary,inclBonus?annualBonus:0),[profile,grossSalary,annualBonus,inclBonus]);
+  const annualNet=totalIncome*12;
+  const annualExpenses=totalExpenses*12;
+  const annualSavingsTotal=totalSavings*12;
+  const now=new Date();
+  const taxYear=cfg.taxYearNote;
+
+  const rows=[
+    {label:"Gross Annual Salary",        value:fmt(grossSalary),                color:T.green},
+    {label:"Annual Bonus (gross)",        value:inclBonus?fmt(annualBonus):"Excluded",     color:inclBonus?T.amber:T.muted},
+    {label:"Estimated Total Tax",         value:"-"+fmt(annualTax),             color:T.red},
+    {label:"Net Annual Salary",           value:fmt(netSalary*12),              color:T.green},
+    {label:"Net Bonus (avg annual)",      value:inclBonus?fmt(netBonus*12):"—", color:inclBonus?T.amber:T.muted},
+    {label:"Effective Tax Rate",          value:effectiveRate+"%",              color:T.amber},
+    {label:"Annual Expenses",             value:"-"+fmt(annualExpenses),        color:T.red},
+    {label:"Annual Savings Contributed",  value:fmt(annualSavingsTotal),        color:T.blue},
+    {label:"Net Annual Income (total)",   value:fmt(annualNet),                 color:T.text,bold:true},
+  ];
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:"20px"}}>
+      <div onClick={onClose} style={{position:"absolute",inset:0,background:"#00000066",backdropFilter:"blur(4px)"}} />
+      <div style={{position:"relative",width:"100%",maxWidth:580,background:T.card,border:"1px solid "+T.border,borderRadius:18,overflow:"hidden",boxShadow:"0 24px 64px #00000077",maxHeight:"90vh",overflowY:"auto"}}>
+        {/* Report header */}
+        <div style={{background:"linear-gradient(135deg,"+T.accent+"22,"+T.blue+"11)",borderBottom:"1px solid "+T.border,padding:"24px 28px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+            <div>
+              <div style={{fontSize:10,letterSpacing:3,color:T.accent,textTransform:"uppercase",marginBottom:6,fontFamily:"monospace"}}>FinCommand · Annual Report</div>
+              <h2 style={{margin:"0 0 4px",fontSize:22,fontWeight:800,color:T.text,letterSpacing:-0.5}}>Tax Year Summary</h2>
+              <div style={{fontSize:12,color:T.muted}}>{cfg.flag} {cfg.name} · {taxYear}</div>
+              <div style={{fontSize:11,color:T.muted,marginTop:2}}>Generated {now.toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"})}</div>
+            </div>
+            <button onClick={onClose} style={{background:"transparent",border:"1px solid "+T.border,color:T.muted,borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>×</button>
+          </div>
+        </div>
+        {/* KPI row */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:0,borderBottom:"1px solid "+T.border}}>
+          {[
+            {label:"Net Income / mo",  value:fmt(totalIncome),    color:T.green},
+            {label:"Total Tax / yr",   value:fmt(annualTax),      color:T.red},
+            {label:"Savings / yr",     value:fmt(annualSavingsTotal), color:T.blue},
+          ].map((k,i)=>(
+            <div key={i} style={{padding:"16px 20px",borderRight:i<2?"1px solid "+T.border:"none",textAlign:"center"}}>
+              <div style={{fontSize:10,color:T.muted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:5}}>{k.label}</div>
+              <div style={{fontSize:19,color:k.color,fontFamily:"monospace",fontWeight:700}}>{k.value}</div>
+            </div>
+          ))}
+        </div>
+        {/* Line items */}
+        <div style={{padding:"0"}}>
+          {rows.map((r,i)=>(
+            <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 28px",borderBottom:i<rows.length-1?"1px solid "+T.border+"44":"none",background:r.bold?T.surface:"transparent"}}>
+              <span style={{fontSize:r.bold?12:11,color:r.bold?T.text:T.muted,fontWeight:r.bold?700:400,letterSpacing:r.bold?0.5:0,textTransform:r.bold?"uppercase":"none"}}>{r.label}</span>
+              <span style={{fontSize:r.bold?16:13,color:r.color,fontFamily:"monospace",fontWeight:r.bold?700:500}}>{r.value}</span>
+            </div>
+          ))}
+        </div>
+        {/* Tax note */}
+        <div style={{padding:"16px 28px",background:T.amber+"0a",borderTop:"1px solid "+T.amber+"22"}}>
+          <div style={{fontSize:11,color:T.muted,lineHeight:1.8}}>
+            <span style={{color:T.amber,fontWeight:700}}>📋 {cfg.flag} Note: </span>{cfg.rentalNotes}
+          </div>
+        </div>
+        {/* Print button */}
+        <div style={{padding:"16px 28px",display:"flex",gap:10}}>
+          <button onClick={()=>window.print()} style={{flex:1,background:T.accent,border:"none",color:T.bg,borderRadius:10,padding:"12px",cursor:"pointer",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+            🖨️ Print / Save as PDF
+          </button>
+          <button onClick={onClose} style={{background:T.faint,border:"1px solid "+T.border,color:T.muted,borderRadius:10,padding:"12px 20px",cursor:"pointer",fontSize:13}}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// AI FINANCE ADVISOR — conversational AI using the Anthropic API
+// Powered by dashboard data context + Claude claude-sonnet-4-20250514
+function AIAdvisor({ dashboardContext, themeId, onClose }) {
+  const T=useTheme();
+  const [messages,setMessages]=useState([
+    { role:"assistant", text:"Hi! I'm your AI Finance Advisor. I have access to your complete financial data — income, expenses, savings, cashflow, and projections. Ask me anything about your finances, what-if scenarios, or how to improve your financial position." }
+  ]);
+  const [input,setInput]=useState("");
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState("");
+  const bottomRef=useRef(null);
+  const inputRef=useRef(null);
+
+  useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:"smooth"}); },[messages]);
+
+  const QUICK_PROMPTS=[
+    "Am I on track to hit £1.9M?",
+    "How can I improve my savings rate?",
+    "What if my rent drops by £500?",
+    "Analyse my biggest expense risks",
+    "When can I stop worrying about my emergency fund?",
+    "What's my financial health score breakdown?",
+    "How does my housing cost compare to best practice?",
+    "Give me a 3-point action plan for this month",
+  ];
+
+  const sendMessage=async(text)=>{
+    const userText=(text||input).trim();
+    if(!userText||loading)return;
+    setInput("");setError("");
+    const newMessages=[...messages,{role:"user",text:userText}];
+    setMessages(newMessages);
+    setLoading(true);
+    const systemPrompt="You are an expert personal finance advisor in FinCommand. Use ONLY the user's actual numbers below. Be specific, concise, actionable. Under 220 words. Match their currency symbol.\n\nUSER DATA:\n"+dashboardContext+"\n\nRules: reference real numbers, suggest concrete steps, no generic advice, no specific fund recommendations.";
+    try {
+      let endpoint, headers, body;
+      if(IS_CONFIGURED){
+        const sb=await getSb();
+        const{data:{session}}=await sb.auth.getSession();
+        endpoint=SUPABASE_URL+"/functions/v1/ai-advisor";
+        headers={"Content-Type":"application/json","apikey":SUPABASE_ANON,...(session?.access_token?{Authorization:"Bearer "+session.access_token}:{})};
+        body=JSON.stringify({system:systemPrompt,messages:newMessages.map(m=>({role:m.role,content:m.text}))});
+      } else {
+        endpoint="https://api.anthropic.com/v1/messages";
+        headers={"Content-Type":"application/json","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"};
+        body=JSON.stringify({model:"claude-sonnet-4-5",max_tokens:500,system:systemPrompt,messages:newMessages.map(m=>({role:m.role,content:m.text}))});
+      }
+      const res=await fetch(endpoint,{method:"POST",headers,body});
+      if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e?.error?.message||e?.message||"Error "+res.status);}
+      const data=await res.json();
+      const reply=data.content?.[0]?.text||data.reply||data.message||"No response. Check your Edge Function is deployed.";
+      setMessages(p=>[...p,{role:"assistant",text:reply}]);
+    } catch(e){
+      setError(e.message||"Connection issue. Deploy the Edge Function or check your API key.");
+    } finally { setLoading(false); }
+  };
+
+  const isDark=["terminal","slate","midnight","autumn","westafrica","nigeria","london","newyork","tokyo","la"].includes(themeId);
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"flex-end",justifyContent:"flex-end",padding:"70px 20px 20px"}}>
+      <div onClick={onClose} style={{position:"absolute",inset:0,background:"#00000044",backdropFilter:"blur(2px)"}} />
+      <div style={{position:"relative",width:"100%",maxWidth:460,height:"min(680px,85vh)",background:T.card,border:"1px solid "+T.border,borderRadius:18,display:"flex",flexDirection:"column",boxShadow:"0 24px 64px #00000077",overflow:"hidden"}}>
+        {/* Header */}
+        <div style={{padding:"16px 18px",borderBottom:"1px solid "+T.border,background:"linear-gradient(135deg,"+T.accent+"18,"+T.purple+"0a)",flexShrink:0,display:"flex",alignItems:"center",gap:12}}>
+          <div style={{width:36,height:36,background:"linear-gradient(135deg,"+T.accent+","+T.purple+")",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>✨</div>
+          <div style={{flex:1}}>
+            <div style={{fontSize:13,fontWeight:700,color:T.text}}>AI Finance Advisor</div>
+            <div style={{fontSize:11,color:T.muted}}>Powered by your data · Claude AI</div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <div style={{width:7,height:7,borderRadius:"50%",background:T.green,boxShadow:"0 0 6px "+T.green}} />
+            <span style={{fontSize:10,color:T.muted,fontFamily:"monospace"}}>live</span>
+          </div>
+          <button onClick={onClose} style={{background:"transparent",border:"1px solid "+T.border,color:T.muted,borderRadius:7,width:28,height:28,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>×</button>
+        </div>
+        {/* Messages */}
+        <div style={{flex:1,overflowY:"auto",padding:"14px 16px",display:"flex",flexDirection:"column",gap:12}}>
+          {messages.map((m,i)=>(
+            <div key={i} style={{display:"flex",gap:8,alignItems:"flex-start",flexDirection:m.role==="user"?"row-reverse":"row"}}>
+              <div style={{width:28,height:28,borderRadius:"50%",background:m.role==="user"?T.blue+"33":"linear-gradient(135deg,"+T.accent+"44,"+T.purple+"33)",border:"1px solid "+(m.role==="user"?T.blue+"44":T.accent+"33"),display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,flexShrink:0}}>
+                {m.role==="user"?"👤":"✨"}
+              </div>
+              <div style={{maxWidth:"82%",background:m.role==="user"?T.blue+"18":T.surface,border:"1px solid "+(m.role==="user"?T.blue+"33":T.border+"66"),borderRadius:m.role==="user"?"12px 4px 12px 12px":"4px 12px 12px 12px",padding:"10px 13px"}}>
+                <div style={{fontSize:12,color:T.text,lineHeight:1.75,whiteSpace:"pre-wrap"}}>{m.text}</div>
+              </div>
+            </div>
+          ))}
+          {loading&&(
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <div style={{width:28,height:28,borderRadius:"50%",background:"linear-gradient(135deg,"+T.accent+"44,"+T.purple+"33)",border:"1px solid "+T.accent+"33",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13}}>✨</div>
+              <div style={{background:T.surface,border:"1px solid "+T.border+"66",borderRadius:"4px 12px 12px 12px",padding:"10px 16px",display:"flex",gap:5,alignItems:"center"}}>
+                {[0,1,2].map(i=><div key={i} style={{width:7,height:7,borderRadius:"50%",background:T.accent,opacity:0.6,animation:`fc-spin ${0.6+i*0.15}s ease-in-out infinite alternate`}} />)}
+              </div>
+            </div>
+          )}
+          {error&&<div style={{fontSize:11,color:T.red,textAlign:"center",padding:"6px 12px",background:T.red+"12",borderRadius:8}}>{error}</div>}
+          <div ref={bottomRef} />
+        </div>
+        {/* Quick prompts */}
+        {messages.length<=1&&(
+          <div style={{padding:"6px 14px 8px",borderTop:"1px solid "+T.border+"44",flexShrink:0}}>
+            <div style={{fontSize:10,color:T.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:7}}>Quick questions</div>
+            <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+              {QUICK_PROMPTS.map(q=>(
+                <button key={q} onClick={()=>sendMessage(q)} style={{background:T.faint,border:"1px solid "+T.border,color:T.muted,borderRadius:20,padding:"5px 10px",cursor:"pointer",fontSize:10,fontFamily:"inherit",transition:"all 0.15s",lineHeight:1.4}}>
+                  {q}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {/* Input */}
+        <div style={{padding:"10px 14px",borderTop:"1px solid "+T.border,flexShrink:0,display:"flex",gap:8,background:T.surface}}>
+          <input ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&!e.shiftKey&&sendMessage()}
+            placeholder="Ask anything about your finances…"
+            style={{flex:1,background:T.faint,border:"1px solid "+T.border,borderRadius:10,padding:"10px 13px",color:T.text,fontFamily:"inherit",fontSize:13,outline:"none"}} />
+          <button onClick={()=>sendMessage()} disabled={!input.trim()||loading}
+            style={{background:T.accent,border:"none",color:T.bg,borderRadius:10,padding:"10px 16px",cursor:(!input.trim()||loading)?"not-allowed":"pointer",fontSize:16,fontWeight:700,opacity:(!input.trim()||loading)?0.5:1,transition:"opacity 0.2s",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            ↑
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 class ErrorBoundary extends React.Component {
   constructor(p){super(p);this.state={error:null};}
   static getDerivedStateFromError(e){return{error:e};}
@@ -1650,9 +2006,7 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
 // ROOT APP
-// ══════════════════════════════════════════════════════════════════════════════
 export default function App() {
   const [screen,  setScreen] =useState("loading");
   const [user,    setUser]   =useState(null);
