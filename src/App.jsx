@@ -46,7 +46,6 @@ function GlobalStyles() { return <style dangerouslySetInnerHTML={{ __html: GLOBA
 // Get them from: https://supabase.com/dashboard → Project → Settings → API
 const SUPABASE_URL  = "https://cjgazhrxexjvztkzaujk.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNqZ2F6aHJ4ZXhqdnp0a3phdWprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5MTY0OTgsImV4cCI6MjA4ODQ5MjQ5OH0.2CB4zj-1z5RrS728vM87mq4rM1vnnxuahqE09HGuOXM";
-                     // Replace with your anon/public key
 const IS_CONFIGURED = !SUPABASE_URL.includes("YOUR_PROJECT");
 
 // Fallback demo mode when keys not yet configured
