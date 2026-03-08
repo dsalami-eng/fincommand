@@ -939,21 +939,41 @@ function CashflowTab({ cashflow, setCashflow, monthlyIncome, monthlyExpenses, mo
   },[rows,monthlyIncome,monthlyExpenses,monthlySavings,numMonths,T,fmt,fmtK]);
 
   // ── Chart geometry calculations ──────────────────────────────────────────
-  // We need to know the overall range so every bar is correctly scaled
+  // Scale is based ONLY on closing balances so bars fill the chart meaningfully.
+  // We deliberately exclude openingBalance from yMax — it would dominate the
+  // scale and flatten all monthly bars into unreadable slivers.
   const maxBal  = Math.max(...rows.map(r=>r.closingBal), 0);
   const minBal  = Math.min(...rows.map(r=>r.closingBal), 0);
-  const maxOneOff = Math.max(...rows.map(r=>r.oneOffTotal), 0);
-  // The Y-axis max is whichever is higher: the closing balance or the opening balance
-  const yMax    = Math.max(maxBal, openingBalance, maxOneOff * 2, 1);
-  const CHART_H = 220; // pixel height of the chart area
-  const YAXIS_W = 52;  // pixel width of Y-axis label area
+  // yFloor: the baseline of the chart. If all balances are positive and clustered,
+  // we lower the baseline to give bars more visual height (80% of minimum balance).
+  // If data goes negative the floor is 0 (or below).
+  const allPositive = minBal >= 0;
+  // Floor = 80% of minimum closing balance, snapped to a nice round number, min 0
+  const rawFloor = allPositive ? Math.max(0, minBal * 0.8) : Math.min(minBal * 1.1, 0);
+  // Top = max balance + 10% headroom
+  const rawCeil  = maxBal > 0 ? maxBal * 1.12 : 1000;
+  // yMax and yMin are the axis extents
+  const yMax     = rawCeil;
+  const yMin     = rawFloor;
+  const ySpan    = Math.max(yMax - yMin, 1);
 
-  // Compute nice Y-axis tick values and the pixel position of the $0 line
-  const yTicks  = useMemo(()=>niceYTicks(yMax, 5),[yMax]);
-  const yRange  = Math.max(yTicks[yTicks.length-1], 1);
-  // If data goes negative, position $0 proportionally; otherwise $0 is the bottom
-  const zeroFrac = minBal<0 ? yMax/(yMax-minBal) : 1; // fraction from top where $0 line goes
-  const zeroY    = CHART_H * (1 - (0 - minBal) / Math.max(yRange, yMax - minBal, 1));
+  const CHART_H = 260; // taller chart for better readability
+  const YAXIS_W = 56;  // pixel width of Y-axis label area
+
+  // Compute nice Y-axis ticks across the visible span
+  const yTicks  = useMemo(()=>{
+    const ticks = niceYTicks(yMax, 5);
+    // Filter to only ticks within or near visible range
+    return ticks.filter(t => t >= yMin - ySpan*0.05);
+  },[yMax, yMin, ySpan]);
+  const yRange  = Math.max(yTicks[yTicks.length-1] ?? yMax, yMax, 1);
+
+  // Helper: convert a dollar value to a pixel Y position from the BOTTOM of the chart
+  // (we use flex-end alignment so bottom=0 corresponds to yMin)
+  const valToPx = (val) => Math.max(0, ((val - yMin) / ySpan) * CHART_H);
+
+  // $0 line position from top of chart (only drawn if data goes negative)
+  const zeroFromTop = CHART_H - valToPx(0);
 
   // X-axis: indices to actually label (not every bar for long views)
   const xLabelIdxs = useMemo(()=>new Set(xAxisLabels(rows, numMonths)),[rows, numMonths]);
@@ -1012,10 +1032,10 @@ function CashflowTab({ cashflow, setCashflow, monthlyIncome, monthlyExpenses, mo
           <Lbl color={T.green}>Closing Balance — {viewConfig[cfView]?.label} View</Lbl>
           <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
             {[
-              {l:"Surplus (recurring)",c:T.green},
-              {l:"One-offs",c:T.amber},
-              {l:"Watch zone",c:T.amber+"88"},
+              {l:"Healthy",c:T.green},
+              {l:"Watch zone",c:T.amber},
               {l:"Deficit",c:T.red},
+              {l:"One-off costs",c:T.amber+"99"},
             ].map(x=>(
               <div key={x.l} style={{display:"flex",alignItems:"center",gap:4}}>
                 <div style={{width:8,height:8,borderRadius:2,background:x.c}} />
@@ -1032,19 +1052,21 @@ function CashflowTab({ cashflow, setCashflow, monthlyIncome, monthlyExpenses, mo
           {/* Positioned absolutely relative to chart height */}
           <div style={{width:YAXIS_W,flexShrink:0,position:"relative",height:CHART_H,marginRight:4}}>
             {yTicks.map(tick=>{
-              // Convert $ value to pixel position from the top of the chart
-              const fracFromTop = 1 - (tick / yRange);
-              const yPx = fracFromTop * CHART_H;
+              // Convert $ value to pixel position from TOP of chart
+              const yPxFromBottom = valToPx(tick);
+              const yPxFromTop = CHART_H - yPxFromBottom;
+              // Only render if within chart bounds
+              if(yPxFromTop < -8 || yPxFromTop > CHART_H + 8) return null;
               return (
-                <div key={tick} style={{position:"absolute",right:6,top:yPx,transform:"translateY(-50%)",
+                <div key={tick} style={{position:"absolute",right:6,top:yPxFromTop,transform:"translateY(-50%)",
                   fontSize:9,color:T.muted+"aa",fontFamily:"monospace",whiteSpace:"nowrap",textAlign:"right",pointerEvents:"none"}}>
-                  {tick>=1000?fmtK(tick):fmt(tick)}
+                  {tick>=1000?fmtK(tick):tick===0?"$0":fmt(tick)}
                 </div>
               );
             })}
-            {/* If data goes negative, show a "0" label at the correct position */}
+            {/* $0 marker if data goes negative */}
             {minBal<0&&(
-              <div style={{position:"absolute",right:6,top:CHART_H*(1-(0/yRange)),transform:"translateY(-50%)",
+              <div style={{position:"absolute",right:6,top:zeroFromTop,transform:"translateY(-50%)",
                 fontSize:9,color:T.muted,fontFamily:"monospace",fontWeight:700}}>$0</div>
             )}
           </div>
@@ -1054,50 +1076,58 @@ function CashflowTab({ cashflow, setCashflow, monthlyIncome, monthlyExpenses, mo
 
             {/* Horizontal gridlines at each Y-axis tick */}
             {yTicks.map(tick=>{
-              const fracFromTop=1-(tick/yRange);
-              const yPx=fracFromTop*CHART_H;
+              const yPxFromTop = CHART_H - valToPx(tick);
+              if(yPxFromTop < 0 || yPxFromTop > CHART_H) return null;
               return (
-                <div key={tick} style={{position:"absolute",left:0,right:0,top:yPx,
+                <div key={tick} style={{position:"absolute",left:0,right:0,top:yPxFromTop,
                   borderTop:"1px dashed "+T.faint,pointerEvents:"none",zIndex:0}} />
               );
             })}
 
             {/* $0 baseline — only shown if some bars dip negative */}
             {minBal<0&&(
-              <div style={{position:"absolute",left:0,right:0,top:CHART_H*(1-(0/yRange)),
-                borderTop:"2px solid "+T.muted+"44",zIndex:2,pointerEvents:"none"}}>
+              <div style={{position:"absolute",left:0,right:0,top:zeroFromTop,
+                borderTop:"2px solid "+T.muted+"66",zIndex:2,pointerEvents:"none"}}>
                 <span style={{position:"absolute",left:2,top:-9,fontSize:8,color:T.muted,fontFamily:"monospace"}}>0</span>
               </div>
             )}
 
+            {/* Floor reference line — subtle line showing the chart baseline (not $0) */}
+            {allPositive && yMin > 0 && (
+              <div style={{position:"absolute",left:0,right:0,bottom:0,
+                borderTop:"1px solid "+T.border,zIndex:1,pointerEvents:"none"}} />
+            )}
+
             {/* The actual bars */}
-            <div style={{position:"absolute",inset:0,display:"flex",alignItems:"flex-end",gap:numMonths>24?1:2,paddingBottom:0}}>
+            <div style={{position:"absolute",inset:0,display:"flex",alignItems:"flex-end",gap:numMonths>36?1:numMonths>18?2:3,paddingBottom:0}}>
               {rows.map((row,idx)=>{
-                const isPos      = row.closingBal>=0;
-                const isLow      = row.closingBal>=0 && row.closingBal<monthlyExpenses*2;
-                const barColor   = !isPos?T.red:isLow?T.amber:T.green;
-                const isHov      = hovBar===idx;
+                const isPos   = row.closingBal >= 0;
+                const isLow   = row.closingBal >= 0 && row.closingBal < monthlyExpenses * 2;
+                const barColor = !isPos ? T.red : isLow ? T.amber : T.green;
+                const isHov   = hovBar === idx;
 
-                // ── Stacked bar heights ──────────────────────────────────
-                // Total bar = closing balance (or absolute if negative)
-                const totalBarPx = isPos
-                  ? Math.max(2, (row.closingBal/yRange)*CHART_H)
-                  : Math.max(2, (Math.abs(row.closingBal)/yRange)*CHART_H);
+                // ── Bar height: closing balance mapped to pixel height ──────────
+                // For positive balances: bar goes from yMin (chart floor) to closingBal
+                // For negative: bar goes from $0 downward
+                const barPx = isPos
+                  ? Math.max(3, valToPx(row.closingBal))
+                  : Math.max(3, valToPx(0) - valToPx(row.closingBal));
 
-                // Surplus layer (green, bottom)
-                const surplusFrac = row.surplus>0 && row.closingBal>0
-                  ? Math.min(1, row.surplus/Math.max(row.closingBal,1))
+                // ── Monthly movement cap ─────────────────────────────────────
+                // A small colored stripe at the top of the bar shows direction of
+                // monthly net movement (growing = green cap, shrinking = amber/red cap)
+                const netMovement = row.netMonth; // positive = balance grew this month
+                const capHeight = Math.min(12, Math.max(3, Math.abs(netMovement) / Math.max(ySpan, 1) * CHART_H));
+                const capColor = netMovement >= 0
+                  ? (isLow ? T.amber : T.green) + "cc"
+                  : T.red + "aa";
+
+                // ── One-off stripe ───────────────────────────────────────────
+                // If there are one-offs this month, show a subtle amber band
+                const hasOneOffs = row.oneOffTotal > 0;
+                const oneOffPx = hasOneOffs
+                  ? Math.min(barPx * 0.3, Math.max(4, row.oneOffTotal / ySpan * CHART_H))
                   : 0;
-                const surplusPx  = Math.round(totalBarPx * surplusFrac);
-
-                // One-off layer (amber, on top of surplus)
-                const oneoffFrac = row.oneOffTotal>0 && row.closingBal>0
-                  ? Math.min(1, row.oneOffTotal/Math.max(row.closingBal,1))
-                  : 0;
-                const oneoffPx   = Math.max(0, Math.round(totalBarPx * Math.min(oneoffFrac, 1-surplusFrac)));
-
-                // Remaining balance layer (same color as bar status — base)
-                const basePx = Math.max(0, totalBarPx - surplusPx - oneoffPx);
 
                 return (
                   <div key={row.id} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",minWidth:0,
@@ -1107,8 +1137,7 @@ function CashflowTab({ cashflow, setCashflow, monthlyIncome, monthlyExpenses, mo
                     {/* ── Hover tooltip ────────────────────────────────── */}
                     {isHov&&(
                       <div style={{position:"absolute",bottom:"105%",
-                        // Flip tooltip to left side for bars near the right edge
-                        ...(idx>rows.length*0.7?{right:"0%"}:{left:"50%",transform:"translateX(-50%)"}),
+                        ...(idx > rows.length * 0.65 ? {right:"0%"} : {left:"50%",transform:"translateX(-50%)"}),
                         background:T.surface,border:"1px solid "+barColor+"66",borderRadius:10,
                         padding:"10px 14px",zIndex:20,whiteSpace:"nowrap",boxShadow:"0 6px 24px #00000066",
                         pointerEvents:"none",minWidth:170}}>
@@ -1134,31 +1163,68 @@ function CashflowTab({ cashflow, setCashflow, monthlyIncome, monthlyExpenses, mo
                       </div>
                     )}
 
-                    {/* ── The stacked bar itself ────────────────────────── */}
-                    {isPos?(
-                      <div style={{position:"absolute",bottom:0,width:"100%",height:totalBarPx,display:"flex",flexDirection:"column-reverse",borderRadius:"3px 3px 0 0",overflow:"hidden",
-                        border:"1px solid "+(isHov?barColor:barColor+"44"),transition:"border-color 0.1s"}}>
-                        {/* Bottom: base balance (dark tinted) */}
-                        {basePx>0&&<div style={{width:"100%",height:basePx,background:isHov?barColor+"66":barColor+"33",flexShrink:0}} />}
-                        {/* Middle: one-off cost layer (amber) */}
-                        {oneoffPx>0&&<div style={{width:"100%",height:oneoffPx,background:isHov?T.amber+"cc":T.amber+"77",flexShrink:0}} />}
-                        {/* Top: surplus layer (green) */}
-                        {surplusPx>0&&<div style={{width:"100%",height:surplusPx,background:isHov?T.green+"cc":T.green+"66",flexShrink:0}} />}
+                    {/* ── The bar itself ───────────────────────────────── */}
+                    {isPos ? (
+                      <div style={{
+                        position:"absolute",bottom:0,width:numMonths<=12?"72%":numMonths<=24?"80%":"90%",
+                        height:barPx,
+                        borderRadius:"3px 3px 0 0",
+                        overflow:"hidden",
+                        border:"1px solid "+(isHov ? barColor+"99" : barColor+"33"),
+                        transition:"all 0.15s",
+                        display:"flex",flexDirection:"column-reverse",
+                      }}>
+                        {/* Main body — solid fill proportional to closing balance */}
+                        <div style={{
+                          flex:1,
+                          background: isHov ? barColor+"44" : barColor+"22",
+                          transition:"background 0.15s",
+                        }} />
+                        {/* One-off stripe — amber band if there are one-offs this month */}
+                        {hasOneOffs && (
+                          <div style={{
+                            width:"100%",height:Math.max(3, oneOffPx),flexShrink:0,
+                            background: isHov ? T.amber+"bb" : T.amber+"77",
+                          }} />
+                        )}
+                        {/* Net movement cap — colored stripe at top indicating monthly direction */}
+                        <div style={{
+                          width:"100%",height:Math.max(3, capHeight),flexShrink:0,
+                          background:capColor,
+                        }} />
                       </div>
-                    ):(
-                      // Negative balance: red bar hanging below the zero line
-                      <div style={{position:"absolute",top:CHART_H*(1-(0/yRange)),width:"100%",height:Math.max(2,totalBarPx),
-                        background:isHov?T.red:T.red+"66",border:"1px solid "+T.red+(isHov?"cc":"44"),borderRadius:"0 0 3px 3px"}} />
+                    ) : (
+                      // Negative balance: red bar hanging down from $0 line
+                      <div style={{
+                        position:"absolute",
+                        top: zeroFromTop,
+                        width:numMonths<=12?"72%":numMonths<=24?"80%":"90%",
+                        height:Math.max(3, barPx),
+                        background: isHov ? T.red+"88" : T.red+"44",
+                        border:"1px solid "+T.red+(isHov?"cc":"44"),
+                        borderRadius:"0 0 3px 3px",
+                      }} />
                     )}
 
-                    {/* ── X-axis label (shown only at intervals to avoid crowding) ── */}
+                    {/* ── X-axis label ──────────────────────────────────── */}
                     {xLabelIdxs.has(idx)&&(
-                      <div style={{position:"absolute",bottom:-(numMonths>12?14:18),
-                        fontSize:numMonths>24?7:9,color:isHov?T.text:T.muted+"99",fontFamily:"monospace",
-                        whiteSpace:"nowrap",textAlign:"center",width:"200%",left:"-50%",overflow:"visible"}}>
-                        {numMonths>24
-                          ? row.label.split(" ")[0].slice(0,3)+" "+row.label.split(" ")[1]?.slice(2)  // "Mar 26"
-                          : row.label.split(" ")[0]}                                                    // "Mar"
+                      <div style={{
+                        position:"absolute",
+                        bottom: numMonths > 12 ? -14 : -20,
+                        fontSize: numMonths > 36 ? 7 : numMonths > 18 ? 8 : 9,
+                        color: isHov ? T.text : T.muted+"99",
+                        fontFamily:"monospace",
+                        whiteSpace:"nowrap",
+                        textAlign:"center",
+                        width:"200%",
+                        left:"-50%",
+                        overflow:"visible",
+                        pointerEvents:"none",
+                      }}>
+                        {numMonths > 24
+                          ? (row.label.split(" ")[0]||"").slice(0,3) + " " + ((row.label.split(" ")[1]||"").slice(2))
+                          : (row.label.split(" ")[0]||"").slice(0,3)
+                        }
                       </div>
                     )}
                   </div>
@@ -1169,9 +1235,19 @@ function CashflowTab({ cashflow, setCashflow, monthlyIncome, monthlyExpenses, mo
         </div>
 
         {/* Extra bottom padding for X-axis labels */}
-        <div style={{height:numMonths>12?20:24}} />
+        <div style={{height:numMonths>12?18:26}} />
 
-        <div style={{fontSize:10,color:T.muted,textAlign:"center",marginTop:4}}>
+        {/* Baseline note — only when chart has a raised floor */}
+        {allPositive && yMin > 0 && (
+          <div style={{display:"flex",alignItems:"center",gap:6,marginTop:2}}>
+            <div style={{width:16,height:1,background:T.border}} />
+            <span style={{fontSize:9,color:T.muted,fontFamily:"monospace"}}>
+              Chart floor: {fmtK(yMin)} · bars show balance above this level
+            </span>
+          </div>
+        )}
+
+        <div style={{fontSize:10,color:T.muted,textAlign:"center",marginTop:6}}>
           Hover any bar for a full breakdown · Click a month row below to add one-off expenses
         </div>
       </div>
