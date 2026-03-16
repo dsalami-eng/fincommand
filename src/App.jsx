@@ -40,59 +40,99 @@ const GLOBAL_CSS = `
 function GlobalStyles() { return <style dangerouslySetInnerHTML={{ __html: GLOBAL_CSS }} />; }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// SUPABASE  — real by default, env-injectable
+// ENVIRONMENT CONFIG — set PRODUCTION_DOMAIN before deploying to git
 // ══════════════════════════════════════════════════════════════════════════════
-// ── Configure these with your real Supabase project credentials ──────────────
-// Get them from: https://supabase.com/dashboard → Project → Settings → API
+// STEP 1: Set this to your deployed app's domain (no https://, no trailing slash)
+//         Example: "myfinapp.com" or "app.myfinapp.com"
+//         Leave empty ("") to stay in demo mode everywhere (safe default)
+const PRODUCTION_DOMAIN = "https://fincommand.vercel.app/";
+
+// STEP 2: Your Supabase credentials (already set — don't change these)
 const SUPABASE_URL  = "https://cjgazhrxexjvztkzaujk.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNqZ2F6aHJ4ZXhqdnp0a3phdWprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5MTY0OTgsImV4cCI6MjA4ODQ5MjQ5OH0.2CB4zj-1z5RrS728vM87mq4rM1vnnxuahqE09HGuOXM";
 
-const IS_CONFIGURED = !SUPABASE_URL.includes("YOUR_PROJECT");
+// ── IS_DEMO: true everywhere EXCEPT your explicit production domain ───────────
+// Default is ALWAYS demo mode — no network calls, no auth, no "Failed to fetch".
+// Only flips to false when the browser hostname exactly matches PRODUCTION_DOMAIN.
+// This means Claude artifacts, localhost, Vercel previews, CI — all run as demo.
+const IS_DEMO = (() => {
+  if (!PRODUCTION_DOMAIN) return true; // no domain set → always demo
+  try {
+    const h = window.location.hostname;
+    return h !== PRODUCTION_DOMAIN && !h.endsWith("." + PRODUCTION_DOMAIN);
+  } catch { return true; }
+})();
 
-// Fallback demo mode when keys not yet configured
+// IS_CONFIGURED: only true in production with a real domain configured
+const IS_CONFIGURED = !IS_DEMO && !SUPABASE_URL.includes("YOUR_PROJECT");
+
+// IS_EDGE_DEPLOYED: set to true once Supabase Edge Function ai-advisor is deployed.
+// When false, AI Advisor calls Anthropic API directly (safe, works in all environments).
+const IS_EDGE_DEPLOYED = false;
+
+// ── Demo persistence ──────────────────────────────────────────────────────────
 const DEMO_KEY = "fincommand_demo_v6";
 const demoStore = {
-  get()   { try{ return JSON.parse(localStorage.getItem(DEMO_KEY)||"{}"); }catch{ return {}; } },
-  set(d)  { try{ localStorage.setItem(DEMO_KEY,JSON.stringify(d)); }catch{} },
+  get()  { try { return JSON.parse(localStorage.getItem(DEMO_KEY) || "{}"); } catch { return {}; } },
+  set(d) { try { localStorage.setItem(DEMO_KEY, JSON.stringify(d)); } catch {} },
 };
 const DEMO_USER = { id:"demo-001", email:"demo@fincommand.app", user_metadata:{ full_name:"Demo User" } };
 
+// ── Demo DB — zero network calls, localStorage only ───────────────────────────
+// getSession always returns a user → app skips auth and shows dashboard directly.
 const demoDb = {
-  async getSession()           { const s=demoStore.get(); return s.authed?{user:DEMO_USER}:null; },
-  async signInEmail(e,p)       { if(!e||!p)return{user:null,error:"Required"}; demoStore.set({...demoStore.get(),authed:true}); return{user:DEMO_USER,error:null}; },
-  async signUpEmail(e,p)       { if(!e||!p)return{user:null,error:"Required"}; demoStore.set({...demoStore.get(),authed:true}); return{user:DEMO_USER,error:null}; },
-  async signInGoogle()         { demoStore.set({...demoStore.get(),authed:true}); return{error:null}; },
-  async signOut()              { demoStore.set({}); return{error:null}; },
-  async loadUserData()         { const s=demoStore.get(); return{data:s.userData||null,error:null}; },
-  async saveUserData(_,payload){ demoStore.set({...demoStore.get(),userData:payload}); return{error:null}; },
-  async resetPassword(e)       { return{error:null,message:"Check your email for reset link."}; },
+  async getSession()           { return { user: DEMO_USER }; },
+  async signInEmail()          { demoStore.set({...demoStore.get(),authed:true}); return { user:DEMO_USER, error:null }; },
+  async signUpEmail()          { demoStore.set({...demoStore.get(),authed:true}); return { user:DEMO_USER, error:null }; },
+  async signInGoogle()         { demoStore.set({...demoStore.get(),authed:true}); return { error:null }; },
+  async signOut()              { demoStore.set({}); return { error:null }; },
+  async loadUserData()         { const s=demoStore.get(); return { data:s.userData||null, error:null }; },
+  async saveUserData(_,payload){ demoStore.set({...demoStore.get(),userData:payload}); return { error:null }; },
+  async resetPassword()        { return { error:null, message:"Demo mode — no email sent." }; },
 };
 
+// ── Real DB — Supabase, only used when IS_CONFIGURED = true ───────────────────
+// getSb uses new Function() to hide import() strings from Webpack static analysis.
+// Tries npm package first (bundler/git), then CDN ESM (raw browser).
 let _sb = null;
 async function getSb() {
-  if(_sb) return _sb;
-  const { createClient } = await import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm");
+  if (_sb) return _sb;
+  let createClient;
+  try {
+    const mod = await (new Function('return import("@supabase/supabase-js")')());
+    createClient = mod.createClient;
+  } catch {
+    try {
+      const CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
+      const mod = await (new Function('u','return import(u)')(CDN));
+      createClient = mod.createClient;
+    } catch (e) {
+      console.error("[FinCommand] Could not load Supabase:", e);
+      return null;
+    }
+  }
   _sb = createClient(SUPABASE_URL, SUPABASE_ANON, {
-    auth:{ persistSession:true, autoRefreshToken:true, detectSessionInUrl:true }
+    auth: { persistSession:true, autoRefreshToken:true, detectSessionInUrl:true },
   });
   return _sb;
 }
 const realDb = {
-  async getSession()           { const sb=await getSb(); const{data:{session}}=await sb.auth.getSession(); return session?{user:session.user}:null; },
-  async signInEmail(e,p)       { const sb=await getSb(); const{data,error}=await sb.auth.signInWithPassword({email:e,password:p}); return{user:data?.user||null,error:error?.message||null}; },
-  async signUpEmail(e,p)       { const sb=await getSb(); const{data,error}=await sb.auth.signUp({email:e,password:p,options:{emailRedirectTo:window.location.origin}}); return{user:data?.user||null,error:error?.message||null}; },
-  async signInGoogle()         { const sb=await getSb(); const{error}=await sb.auth.signInWithOAuth({provider:"google",options:{redirectTo:window.location.origin,queryParams:{prompt:"select_account"}}}); return{error:error?.message||null}; },
-  async signOut()              { const sb=await getSb(); return sb.auth.signOut(); },
-  async loadUserData(uid)      { const sb=await getSb(); const{data,error}=await sb.from("user_data").select("*").eq("user_id",uid).maybeSingle(); return{data:data||null,error:error?.message||null}; },
-  async saveUserData(uid,p)    { const sb=await getSb(); const{error}=await sb.from("user_data").upsert({user_id:uid,...p,updated_at:new Date().toISOString()},{onConflict:"user_id"}); return{error:error?.message||null}; },
-  async resetPassword(email)   { const sb=await getSb(); const{error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:window.location.origin+"/reset"}); return{error:error?.message||null}; },
+  async getSession()        { const sb=await getSb(); if(!sb)return null; const{data:{session}}=await sb.auth.getSession(); return session?{user:session.user}:null; },
+  async signInEmail(e,p)    { const sb=await getSb(); if(!sb)return{user:null,error:"Connection unavailable"}; const{data,error}=await sb.auth.signInWithPassword({email:e,password:p}); return{user:data?.user||null,error:error?.message||null}; },
+  async signUpEmail(e,p)    { const sb=await getSb(); if(!sb)return{user:null,error:"Connection unavailable"}; const{data,error}=await sb.auth.signUp({email:e,password:p,options:{emailRedirectTo:window.location.origin}}); return{user:data?.user||null,error:error?.message||null}; },
+  async signInGoogle()      { const sb=await getSb(); if(!sb)return{error:"Connection unavailable"}; const{error}=await sb.auth.signInWithOAuth({provider:"google",options:{redirectTo:window.location.origin,queryParams:{prompt:"select_account"}}}); return{error:error?.message||null}; },
+  async signOut()           { const sb=await getSb(); if(!sb)return{error:null}; return sb.auth.signOut(); },
+  async loadUserData(uid)   { const sb=await getSb(); if(!sb)return{data:null,error:"Connection unavailable"}; const{data,error}=await sb.from("user_data").select("*").eq("user_id",uid).maybeSingle(); return{data:data||null,error:error?.message||null}; },
+  async saveUserData(uid,p) { const sb=await getSb(); if(!sb)return{error:"Connection unavailable"}; const{error}=await sb.from("user_data").upsert({user_id:uid,...p,updated_at:new Date().toISOString()},{onConflict:"user_id"}); return{error:error?.message||null}; },
+  async resetPassword(e)    { const sb=await getSb(); if(!sb)return{error:"Connection unavailable"}; const{error}=await sb.auth.resetPasswordForEmail(e,{redirectTo:window.location.origin+"/reset"}); return{error:error?.message||null}; },
 };
+
 const db = IS_CONFIGURED ? realDb : demoDb;
 
-// Auth state listener helper
 async function onAuthChange(cb) {
-  if(!IS_CONFIGURED) return ()=>{};
+  if (!IS_CONFIGURED) return () => {};
   const sb = await getSb();
+  if (!sb) return () => {};
   const { data:{ subscription } } = sb.auth.onAuthStateChange(cb);
   return () => subscription?.unsubscribe();
 }
@@ -102,7 +142,7 @@ async function onAuthChange(cb) {
 // ══════════════════════════════════════════════════════════════════════════════
 const THEME_GROUPS = [
   { id:"dark",    label:"Dark",    emoji:"🌙" },
-  { id:"light",   label:"Light",   emoji:"☀️" },
+  { id:"seasons", label:"Seasons", emoji:"🍂" },
   { id:"cities",  label:"Cities",  emoji:"🌆" },
   { id:"culture", label:"Culture", emoji:"🌍" },
 ];
@@ -121,15 +161,15 @@ const THEMES = {
     text:"#c8d6f0", muted:"#3a4870", faint:"#0b1028",
     green:"#00e5a0", red:"#ff4466", amber:"#ffa040", blue:"#6090ff", purple:"#a060ff", accent:"#6090ff" },
   // ── Light / soft ────────────────────────────────────────────────────────────
-  spring: { id:"spring", name:"Spring", emoji:"🌸", group:"light",
+  spring: { id:"spring", name:"Spring", emoji:"🌸", group:"seasons",
     bg:"#f7f4f0", surface:"#ede8e2", card:"#ffffff", border:"#d9cfc6",
     text:"#2d2420", muted:"#8a7d74", faint:"#e8e0d8",
     green:"#3a8e54", red:"#c96b6b", amber:"#c8883a", blue:"#4a7fb0", purple:"#9b72b0", accent:"#c84580" },
-  summer: { id:"summer", name:"Summer", emoji:"☀️", group:"light",
+  summer: { id:"summer", name:"Summer", emoji:"☀️", group:"seasons",
     bg:"#fffbf2", surface:"#fff4dc", card:"#ffffff", border:"#f0dba0",
     text:"#2a1e00", muted:"#a07828", faint:"#fff0c8",
     green:"#28a060", red:"#e04040", amber:"#f0a000", blue:"#2878c8", purple:"#8858b8", accent:"#e08000" },
-  winter: { id:"winter", name:"Winter", emoji:"❄️", group:"light",
+  winter: { id:"winter", name:"Winter", emoji:"❄️", group:"seasons",
     bg:"#f0f4f8", surface:"#e4edf6", card:"#ffffff", border:"#c8d8ec",
     text:"#1a2840", muted:"#5a7898", faint:"#dce8f4",
     green:"#0a8060", red:"#c84040", amber:"#c87820", blue:"#1460b0", purple:"#5848a0", accent:"#1460b0" },
@@ -151,7 +191,7 @@ const THEMES = {
     text:"#f8f0d8", muted:"#807050", faint:"#1e1808",
     green:"#50c858", red:"#ff5028", amber:"#ffc030", blue:"#30a8e8", purple:"#c050d8", accent:"#ffc030" },
   // ── Culture ─────────────────────────────────────────────────────────────────
-  autumn: { id:"autumn", name:"Autumn", emoji:"🍂", group:"culture",
+  autumn: { id:"autumn", name:"Autumn", emoji:"🍂", group:"seasons",
     bg:"#1a1208", surface:"#251a0a", card:"#2e2010", border:"#3d2e15",
     text:"#f0e0c0", muted:"#8a7050", faint:"#3a2a12",
     green:"#8ab840", red:"#e05030", amber:"#e08020", blue:"#7090c0", purple:"#b06890", accent:"#e08020" },
@@ -180,7 +220,14 @@ const TAX_CONFIGS = {
     brackets:[{up:12570,r:0},{up:50270,r:.20},{up:125140,r:.40},{up:Infinity,r:.45}],
     niRate:0.08, niUpper:50270, niLower:12570, niAbove:0.02,
     rentalNotes:"Rental income taxed at marginal rate. £1,000 property allowance. NRLS applies if non-resident.",
-    taxYearNote:"Tax year: Apr 6 – Apr 5. Self Assessment: Jan 31." },
+    taxYearNote:"Tax year: Apr 6 – Apr 5. Self Assessment: Jan 31.",
+    studentLoanPlans:{
+      plan1:   { label:"Plan 1 (pre-2012)",      threshold:24990, rate:0.09 },
+      plan2:   { label:"Plan 2 (2012–2023)",      threshold:27295, rate:0.09 },
+      plan4:   { label:"Plan 4 (Scotland)",        threshold:31395, rate:0.09 },
+      plan5:   { label:"Plan 5 (post-Aug 2023)",   threshold:25000, rate:0.09 },
+      postgrad:{ label:"Postgraduate Loan",         threshold:21000, rate:0.06 },
+    } },
   CA:{ name:"Canada", flag:"🇨🇦", currency:"CAD", symbol:"CA$", fxToUSD:0.74,
     brackets:[{up:55867,r:.15},{up:111733,r:.205},{up:154906,r:.26},{up:220000,r:.29},{up:Infinity,r:.33}],
     provincialRate:0.1115, cppRate:0.0595, cppCap:68500, eiRate:0.0166, eiCap:63200,
@@ -191,13 +238,18 @@ const TAX_CONFIGS = {
     medicareLevy:0.02,
     rentalNotes:"Negative gearing allowed. Rental losses offset income. 50% CGT discount after 12 months.",
     taxYearNote:"Tax year: Jul 1 – Jun 30. Filing: Oct 31." },
+  NG:{ name:"Nigeria", flag:"🇳🇬", currency:"NGN", symbol:"₦", fxToUSD:0.00065,
+    brackets:[{up:300000,r:0.07},{up:600000,r:0.11},{up:1100000,r:0.15},{up:1600000,r:0.19},{up:3200000,r:0.21},{up:Infinity,r:0.24}],
+    pensionRate:0.08, pensionCap:Infinity,
+    rentalNotes:"Rental income subject to PAYE or 10% withholding tax. Register with FIRS for annual filing.",
+    taxYearNote:"Tax year: Jan 1 – Dec 31. Filing: March 31." },
   DE:{ name:"Germany", flag:"🇩🇪", currency:"EUR", symbol:"€", fxToUSD:1.09,
     brackets:[{up:11604,r:0},{up:17006,r:.14},{up:66761,r:.24},{up:277826,r:.42},{up:Infinity,r:.45}],
     solidarityRate:0.055, socialInsuranceRate:0.195,
     rentalNotes:"Rental income (Vermietung) taxed at marginal. AfA depreciation 2%/yr on building value.",
     taxYearNote:"Tax year: Jan 1 – Dec 31. Filing: Jul 31." },
 };
-function calcTax(country, grossAnnual, bonusAnnual) {
+function calcTax(country, grossAnnual, bonusAnnual, studentLoan) {
   const cfg = TAX_CONFIGS[country]||TAX_CONFIGS.US;
   const total = grossAnnual + bonusAnnual;
   if(total<=0) return { netSalary:0, netBonus:0, effectiveRate:"0.0", annualTax:0 };
@@ -209,16 +261,37 @@ function calcTax(country, grossAnnual, bonusAnnual) {
   else if(country==="CA"){ extra+=total*cfg.provincialRate; extra+=Math.min(grossAnnual,cfg.cppCap)*cfg.cppRate; extra+=Math.min(grossAnnual,cfg.eiCap)*cfg.eiRate; }
   else if(country==="AU"){ extra+=total*cfg.medicareLevy; }
   else if(country==="DE"){ extra+=tax*cfg.solidarityRate; extra+=total*cfg.socialInsuranceRate; }
+  else if(country==="NG"){ extra+=Math.min(grossAnnual,cfg.pensionCap)*cfg.pensionRate; }
   const totalTax=tax+extra;
-  const r=Math.max(0,1-totalTax/total);
-  return { netSalary:Math.round((grossAnnual/12)*r), netBonus:Math.round((bonusAnnual/12)*r), effectiveRate:(totalTax/total*100).toFixed(1), annualTax:Math.round(totalTax) };
+  const r = Math.max(0, 1-totalTax/total);
+  let monthlyStudentLoanRepayment = 0;
+  if (studentLoan?.enabled && cfg.studentLoanPlans) {
+    const plan = cfg.studentLoanPlans[studentLoan.plan||"plan2"];
+    if (plan && grossAnnual > plan.threshold)
+      monthlyStudentLoanRepayment += Math.round(((grossAnnual-plan.threshold)*plan.rate)/12);
+    if (studentLoan.postgrad && cfg.studentLoanPlans.postgrad && grossAnnual > cfg.studentLoanPlans.postgrad.threshold)
+      monthlyStudentLoanRepayment += Math.round(((grossAnnual-cfg.studentLoanPlans.postgrad.threshold)*cfg.studentLoanPlans.postgrad.rate)/12);
+  }
+  return {
+    netSalary: Math.max(0, Math.round((grossAnnual/12)*r) - monthlyStudentLoanRepayment),
+    netBonus: Math.round((bonusAnnual/12)*r),
+    effectiveRate: (totalTax/total*100).toFixed(1),
+    annualTax: Math.round(totalTax),
+    monthlyStudentLoanRepayment,
+  };
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
 // CONSTANTS & HELPERS
 // ══════════════════════════════════════════════════════════════════════════════
-const TARGET_USD = 1900000;
-const fv = (mo,rate,yrs) => { if(mo<=0||yrs<=0)return 0; const r=rate/12; return mo*((Math.pow(1+r,yrs*12)-1)/r)*(1+r); };
+const DEFAULT_TARGET_NW = 1900000;
+const TARGET_USD = DEFAULT_TARGET_NW;
+const fv = (mo, rate, yrs) => {
+  if (mo<=0||yrs<=0) return 0;
+  const r = rate/12;
+  if (Math.abs(r)<1e-10) return mo*yrs*12;
+  return mo*((Math.pow(1+r,yrs*12)-1)/r)*(1+r);
+};
 const sum = (arr,key) => (arr||[]).filter(i=>!i.excluded).reduce((s,i)=>s+(Number(i[key])||0),0);
 const pct = n => (typeof n==="number"&&isFinite(n)&&!isNaN(n))?n.toFixed(1)+"%":"—";
 const uid  = () => Date.now()+"-"+Math.random().toString(36).slice(2,7);
@@ -231,9 +304,32 @@ const INTERVAL_MODES = [
   {id:"5y",label:"5-Year",  steps:[5,10,15,20,25,30],                       fmt:y=>y+"yr"},
 ];
 const TABS = [
-  {id:"overview",label:"Overview"},{id:"cashflow",label:"Cashflow"},
-  {id:"income",label:"Income"},{id:"expenses",label:"Expenses"},
-  {id:"savings",label:"Savings"},{id:"projections",label:"Projections"},{id:"analysis",label:"Analysis"},
+  {id:"overview",    label:"Overview"},
+  {id:"assets",      label:"Assets"},
+  {id:"income",      label:"Income"},
+  {id:"savings",     label:"Savings"},
+  {id:"expenses",    label:"Expenses"},
+  {id:"analysis",    label:"Analysis"},
+  {id:"projections", label:"Projections"},
+  {id:"cashflow",    label:"Cashflow"},
+];
+
+// Asset categories
+const ASSET_CATEGORIES = [
+  {value:"property",    label:"Property",      emoji:"🏠"},
+  {value:"stocks",      label:"Stocks / ETFs",  emoji:"📈"},
+  {value:"pension",     label:"Pension / 401k", emoji:"🏦"},
+  {value:"crypto",      label:"Crypto",          emoji:"₿"},
+  {value:"business",    label:"Business",        emoji:"🏢"},
+  {value:"cash",        label:"Cash / Savings",  emoji:"💵"},
+  {value:"bonds",       label:"Bonds / Fixed",   emoji:"📄"},
+  {value:"other",       label:"Other",           emoji:"📦"},
+];
+
+const DEFAULT_ASSETS = () => [
+  {id:uid(), name:"Primary Property",  category:"property", value:300000, annualReturn:4.0, notes:"", excluded:false},
+  {id:uid(), name:"Investment Account",category:"stocks",   value:25000,  annualReturn:8.0, notes:"", excluded:false},
+  {id:uid(), name:"Pension Fund",      category:"pension",  value:40000,  annualReturn:7.0, notes:"", excluded:false},
 ];
 const INCOME_TYPES = [{value:"salary",label:"Salary"},{value:"bonus",label:"Bonus"},{value:"rental",label:"Rental"},{value:"dividend",label:"Dividend"},{value:"freelance",label:"Freelance"},{value:"other",label:"Other"}];
 const SAV_COLORS = ["#00c896","#4d9fff","#b57bee","#f5a623","#ff4d6d"];
@@ -257,9 +353,9 @@ const DEFAULT_VAR = () => [
   {id:uid(),name:"Miscellaneous",   amount:150, excluded:false},
 ];
 const DEFAULT_SAV = () => [
-  {id:uid(),name:"Index Funds",    amount:500, excluded:false},
-  {id:uid(),name:"Pension / 401k", amount:300, excluded:false},
-  {id:uid(),name:"Emergency Fund", amount:200, excluded:false},
+  {id:uid(),name:"Index Funds",    amount:500, excluded:false, annualReturn:8.0},
+  {id:uid(),name:"Pension / 401k", amount:300, excluded:false, annualReturn:7.0},
+  {id:uid(),name:"Emergency Fund", amount:200, excluded:false, annualReturn:2.0},
 ];
 const DEFAULT_CASHFLOW = () => ({
   months: Array.from({length:12},(_,i)=>{
@@ -279,11 +375,21 @@ function buildFmt(symbol) {
   const fmtK = n => { const a=Math.abs(n||0); const s=a>=1e6?symbol+(a/1e6).toFixed(2)+"M":symbol+Math.round(a/1000).toLocaleString()+"k"; return (n<0?"-":"")+s; };
   return { fmt, fmtK };
 }
-function calcProjRow(y,monthlySavings,netBonus,inclBonus) {
-  const inv=Math.round(fv(monthlySavings,0.07,y));
-  const bon=inclBonus?Math.round(fv(netBonus,0.07,y)):0;
-  const car=Math.max(0,Math.round(30000*Math.pow(0.85,y)));
-  return {y,inv,bon,car,total:inv+bon+car};
+function calcProjRow(y, monthlySavings, netBonus, inclBonus, annualReturnRate, initialAssetValue) {
+  const r = (typeof annualReturnRate==="number" && isFinite(annualReturnRate) && annualReturnRate>0)
+    ? annualReturnRate/100 : 0.07;
+  const inv = Math.round(fv(monthlySavings, r, y));
+  const bon = inclBonus ? Math.round(fv(netBonus, r, y)) : 0;
+  const car = Math.max(0, Math.round(30000*Math.pow(0.85, y)));
+  // Existing assets compound at the same weighted rate (if provided)
+  const existingAssets = initialAssetValue>0 ? Math.round(initialAssetValue*Math.pow(1+r,y)) : 0;
+  return { y, inv, bon, car, existingAssets, total: inv+bon+car+existingAssets };
+}
+function weightedAvgReturn(buckets) {
+  const active = (buckets||[]).filter(b=>!b.excluded);
+  const totalAmt = active.reduce((s,b)=>s+(Number(b.amount)||0), 0);
+  if (totalAmt<=0) return 7;
+  return active.reduce((s,b)=>s+(Number(b.amount)||0)*(Number(b.annualReturn)||7), 0)/totalAmt;
 }
 function niceMax(v) {
   if(v<=0)return 1;
@@ -377,7 +483,7 @@ function InlineEdit({ value, onCommit, type="text", style={}, placeholder="" }) 
 
   const commit=()=>{
     setEditing(false);
-    if(type==="number"){ const n=parseFloat(val); if(!isNaN(n)&&n>=0)onCommit(n); else setVal(String(value)); }
+    if(type==="number"){ const n=parseFloat(val); if(!isNaN(n))onCommit(n); else setVal(String(value)); }
     else { const v=val.trim(); if(v)onCommit(v); else setVal(String(value)); }
   };
 
@@ -439,6 +545,31 @@ function ThemePicker({ current, onChange }) {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// COLLAPSIBLE SECTION — reusable expand/collapse wrapper
+// ══════════════════════════════════════════════════════════════════════════════
+function CollapsibleSection({ title, icon, children, defaultOpen=true, accentColor, badge }) {
+  const T = useTheme();
+  const [open, setOpen] = useState(defaultOpen);
+  const c = accentColor || T.accent;
+  return (
+    <div style={{background:T.card,border:"1px solid "+T.border,borderRadius:14,overflow:"hidden",marginBottom:14}}>
+      <div onClick={()=>setOpen(o=>!o)}
+        style={{background:c+"0e",borderBottom:open?"1px solid "+T.border:"none",padding:"12px 18px",
+          display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",userSelect:"none"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          {icon&&<span style={{fontSize:15}}>{icon}</span>}
+          <span style={{fontSize:11,fontWeight:700,letterSpacing:2,textTransform:"uppercase",color:T.text,fontFamily:"monospace"}}>{title}</span>
+          {badge!==undefined&&<span style={{fontSize:11,fontFamily:"monospace",fontWeight:700,color:c,marginLeft:4}}>{badge}</span>}
+        </div>
+        <span style={{fontSize:13,color:T.muted,transform:open?"rotate(0deg)":"rotate(-90deg)",transition:"transform 0.2s",display:"inline-block"}}>▼</span>
+      </div>
+      {open&&<div>{children}</div>}
     </div>
   );
 }
@@ -527,6 +658,282 @@ function EditableTable({ title, icon, items, setItems, accentColor, sliderMax })
           <button onClick={add} style={{background:accentColor,border:"none",color:T.bg,borderRadius:6,padding:"8px 14px",cursor:"pointer",fontSize:12,fontFamily:"monospace",fontWeight:700}}>Add</button>
           <button onClick={()=>setAdding(false)} style={{background:T.faint,border:"none",color:T.muted,borderRadius:6,padding:"8px 10px",cursor:"pointer",fontSize:12,fontFamily:"monospace"}}>Cancel</button>
         </div>
+      )}
+    </div>
+  );
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ASSETS TAB — manage real-world assets and see projected growth
+// ══════════════════════════════════════════════════════════════════════════════
+function AssetsTab({ assets, setAssets, fmt, fmtK, targetNetWorth, weightedReturn }) {
+  const T = useTheme();
+  const [adding, setAdding] = useState(false);
+  const [nName, setNName]   = useState("");
+  const [nCat,  setNCat]    = useState("stocks");
+  const [nVal,  setNVal]    = useState("");
+  const [nRet,  setNRet]    = useState("7");
+  const [nNote, setNNote]   = useState("");
+
+  const active   = useMemo(()=>assets.filter(a=>!a.excluded), [assets]);
+  const total    = useMemo(()=>active.reduce((s,a)=>s+(Number(a.value)||0),0), [active]);
+  const wAvgRet  = useMemo(()=>{
+    if(total<=0) return 0;
+    return active.reduce((s,a)=>s+(Number(a.value)||0)*(Number(a.annualReturn)||0),0)/total;
+  }, [active, total]);
+
+  const upd  = (id,k,v) => setAssets(p=>p.map(a=>a.id===id?{...a,[k]:v}:a));
+  const tog  = id        => setAssets(p=>p.map(a=>a.id===id?{...a,excluded:!a.excluded}:a));
+  const del  = id        => setAssets(p=>p.filter(a=>a.id!==id));
+  const add  = () => {
+    const v = parseFloat(nVal);
+    const r = parseFloat(nRet);
+    if(!nName.trim()||isNaN(v)||v<0) return;
+    setAssets(p=>[...p,{id:uid(),name:nName.trim(),category:nCat,value:v,annualReturn:isNaN(r)?0:r,notes:nNote.trim(),excluded:false,custom:true}]);
+    setNName(""); setNVal(""); setNRet("7"); setNNote(""); setAdding(false);
+  };
+
+  const inputS = {background:T.faint,border:"1px solid "+T.border,borderRadius:6,padding:"7px 10px",color:T.text,fontFamily:"monospace",fontSize:14,outline:"none"};
+  const catMap = Object.fromEntries(ASSET_CATEGORIES.map(c=>[c.value,c]));
+
+  // Category breakdown for donut-style allocation
+  const byCategory = useMemo(()=>{
+    const map = {};
+    active.forEach(a=>{
+      const cat = a.category||"other";
+      map[cat] = (map[cat]||0)+(Number(a.value)||0);
+    });
+    return Object.entries(map).sort(([,a],[,b])=>b-a);
+  },[active]);
+
+  // Projected asset values at 5, 10, 20 years
+  const projections = useMemo(()=>[5,10,20].map(y=>({
+    y,
+    total: active.reduce((s,a)=>{
+      const r=(Number(a.annualReturn)||0)/100;
+      return s+Math.round((Number(a.value)||0)*Math.pow(1+r,y));
+    },0),
+  })),[active]);
+
+  // Asset insights — computed from actual data
+  const insights = useMemo(()=>{
+    const list = [];
+    if(total<=0) return [];
+
+    // Concentration risk
+    const largest = active.reduce((mx,a)=>!mx||a.value>mx.value?a:mx, null);
+    if(largest && total>0) {
+      const conc = (largest.value/total)*100;
+      if(conc>60) list.push({icon:"⚠️",color:T.red,text:`${largest.name} represents ${pct(conc)} of your total assets. High concentration increases risk — diversifying even 20% would meaningfully reduce exposure to a single asset or sector.`});
+      else if(conc>40) list.push({icon:"📊",color:T.amber,text:`${largest.name} at ${pct(conc)} is your dominant asset. Worth monitoring — if this asset underperforms, it will disproportionately impact your net worth.`});
+      else list.push({icon:"✅",color:T.green,text:`Your largest single asset (${largest.name}) is ${pct(conc)} of total — a reasonably balanced concentration. Diversification across ${active.length} assets reduces single-asset risk.`});
+    }
+
+    // Return rate quality
+    if(wAvgRet < 3) list.push({icon:"💡",color:T.amber,text:`Your weighted asset return of ${pct(wAvgRet)} is low. Even shifting ${pct(20)} of lower-yield holdings toward higher-growth assets could meaningfully improve your long-term trajectory.`});
+    else if(wAvgRet >= 7) list.push({icon:"🚀",color:T.green,text:`Weighted return of ${pct(wAvgRet)} is strong. At this rate, your ${fmtK(total)} in assets is projected to reach ${fmtK(projections[1]?.total||0)} in 10 years through compounding alone.`});
+    else list.push({icon:"📈",color:T.blue,text:`Weighted return of ${pct(wAvgRet)} across your assets. In 10 years at this rate, your portfolio grows to approximately ${fmtK(projections[1]?.total||0)} — before any new contributions.`});
+
+    // Property check
+    const propVal = active.filter(a=>a.category==="property").reduce((s,a)=>s+(Number(a.value)||0),0);
+    if(propVal>0) {
+      const propPct=(propVal/total)*100;
+      if(propPct>70) list.push({icon:"🏠",color:T.amber,text:`Property is ${pct(propPct)} of your net worth — illiquid and hard to rebalance. Make sure your liquid assets (cash, investments) are sufficient for short-term needs.`});
+      else list.push({icon:"🏠",color:T.green,text:`Property at ${pct(propPct)} of your portfolio provides stability. Property typically appreciates 3–5% annually in the long run, though it's illiquid compared to financial assets.`});
+    }
+
+    // Target gap
+    if(targetNetWorth>0) {
+      const gap = targetNetWorth - total;
+      if(gap>0) list.push({icon:"🎯",color:T.blue,text:`You are ${fmtK(gap)} away from your ${fmtK(targetNetWorth)} wealth target. Your current assets alone will reach this in approximately ${(Math.log(targetNetWorth/Math.max(total,1))/Math.log(1+wAvgRet/100)).toFixed(0)} years at ${pct(wAvgRet)}.`});
+      else list.push({icon:"🎯",color:T.green,text:`Your current asset value of ${fmtK(total)} already exceeds your ${fmtK(targetNetWorth)} wealth target. You've reached the milestone — focus on protecting and sustaining it.`});
+    }
+
+    return list.slice(0,4);
+  },[active, total, wAvgRet, projections, targetNetWorth, T, fmtK]);
+
+  return (
+    <div>
+      {/* Summary stat row */}
+      <div className="fc-grid-3" style={{marginBottom:14}}>
+        <div style={{background:T.card,border:"1px solid "+T.border,borderRadius:14,padding:"16px 18px"}}>
+          <div style={{fontSize:10,letterSpacing:1.5,textTransform:"uppercase",color:T.muted,marginBottom:7}}>Total Asset Value</div>
+          <div style={{fontSize:26,fontFamily:"monospace",fontWeight:700,color:T.green}}>{fmtK(total)}</div>
+          <div style={{fontSize:11,color:T.muted,marginTop:4}}>{active.length} active asset{active.length!==1?"s":""}</div>
+        </div>
+        <div style={{background:T.card,border:"1px solid "+T.border,borderRadius:14,padding:"16px 18px"}}>
+          <div style={{fontSize:10,letterSpacing:1.5,textTransform:"uppercase",color:T.muted,marginBottom:7}}>Weighted Return</div>
+          <div style={{fontSize:26,fontFamily:"monospace",fontWeight:700,color:T.blue}}>{pct(wAvgRet)}</div>
+          <div style={{fontSize:11,color:T.muted,marginTop:4}}>Avg annual across portfolio</div>
+        </div>
+        <div style={{background:T.card,border:"1px solid "+T.border,borderRadius:14,padding:"16px 18px"}}>
+          <div style={{fontSize:10,letterSpacing:1.5,textTransform:"uppercase",color:T.muted,marginBottom:7}}>Projected 10yr</div>
+          <div style={{fontSize:26,fontFamily:"monospace",fontWeight:700,color:T.purple}}>{fmtK(projections[1]?.total||0)}</div>
+          <div style={{fontSize:11,color:T.muted,marginTop:4}}>At current return rates</div>
+        </div>
+      </div>
+
+      {/* Asset list */}
+      <CollapsibleSection title="My Assets" icon="💼" accentColor={T.green} badge={fmtK(total)}>
+        <div style={{padding:"10px 18px 6px"}}>
+          {assets.map((a,idx)=>{
+            const catInfo = catMap[a.category]||{emoji:"📦",label:"Other"};
+            const share   = total>0&&!a.excluded?(a.value/total)*100:0;
+            const proj10  = !a.excluded?Math.round((Number(a.value)||0)*Math.pow(1+(Number(a.annualReturn)||0)/100,10)):0;
+            return (
+              <div key={a.id} style={{marginBottom:16,opacity:a.excluded?0.35:1,transition:"opacity 0.2s"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,flexWrap:"wrap"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,flex:1,minWidth:0}}>
+                    <span style={{fontSize:18,flexShrink:0}}>{catInfo.emoji}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <InlineEdit value={a.name} onCommit={v=>upd(a.id,"name",v)}
+                        style={{fontSize:13,color:T.text,fontFamily:"monospace",fontWeight:600}} />
+                      <div style={{fontSize:10,color:T.muted,fontFamily:"monospace",marginTop:2}}>{catInfo.label}</div>
+                    </div>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0,flexWrap:"wrap"}}>
+                    {!a.excluded&&<span style={{fontSize:10,color:T.muted,fontFamily:"monospace"}}>{pct(share)}</span>}
+                    <div style={{display:"flex",alignItems:"center",gap:2}}>
+                      <InlineEdit value={a.value} type="number" onCommit={v=>upd(a.id,"value",Math.max(0,v))}
+                        style={{fontSize:14,color:T.green,fontFamily:"monospace",fontWeight:700,textAlign:"right",maxWidth:110}} />
+                    </div>
+                    {!a.excluded&&(
+                      <div title="Annual return %" style={{display:"flex",alignItems:"center",gap:2,background:T.faint,border:"1px solid "+T.border+"88",borderRadius:5,padding:"2px 6px"}}>
+                        <InlineEdit value={a.annualReturn??0} type="number" onCommit={v=>upd(a.id,"annualReturn",Math.min(40,Math.max(0,v)))}
+                          style={{fontSize:10,color:T.blue,fontFamily:"monospace",fontWeight:700,textAlign:"right",maxWidth:30}} />
+                        <span style={{fontSize:10,color:T.muted,fontFamily:"monospace"}}>%</span>
+                      </div>
+                    )}
+                    <button onClick={()=>tog(a.id)} style={{background:"transparent",border:"1px solid "+T.border,color:T.muted,cursor:"pointer",fontSize:10,padding:"3px 7px",borderRadius:4,fontFamily:"monospace"}}>{a.excluded?"on":"off"}</button>
+                    {a.custom&&<button onClick={()=>del(a.id)} style={{background:"transparent",border:"none",color:T.muted,cursor:"pointer",fontSize:18,padding:"0 2px",lineHeight:1}}>×</button>}
+                  </div>
+                </div>
+                {!a.excluded&&(
+                  <div style={{marginTop:8,display:"flex",gap:16,flexWrap:"wrap"}}>
+                    <div style={{flex:1}}>
+                      <div style={{height:4,background:T.faint,borderRadius:2}}>
+                        <div style={{height:"100%",width:Math.min(100,share)+"%",background:T.green+"88",borderRadius:2,transition:"width 0.2s"}} />
+                      </div>
+                    </div>
+                    <span style={{fontSize:10,color:T.muted,fontFamily:"monospace",flexShrink:0}}>→ {fmtK(proj10)} in 10yr</span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {/* Add form */}
+        {adding?(
+          <div style={{padding:"14px 18px",borderTop:"1px solid "+T.border,background:T.surface}}>
+            <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:8,marginBottom:8}}>
+              <input placeholder="Asset name (e.g. London Flat)" value={nName} onChange={e=>setNName(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&add()} style={{...inputS}} />
+              <select value={nCat} onChange={e=>setNCat(e.target.value)} style={{...inputS,background:T.faint}}>
+                {ASSET_CATEGORIES.map(c=><option key={c.value} value={c.value}>{c.emoji} {c.label}</option>)}
+              </select>
+            </div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+              <input type="number" placeholder="Current value" value={nVal} onChange={e=>setNVal(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&add()} style={{...inputS,flex:2,minWidth:120}} />
+              <div style={{display:"flex",alignItems:"center",gap:4,flex:1,minWidth:80}}>
+                <input type="number" placeholder="Return %" value={nRet} onChange={e=>setNRet(e.target.value)}
+                  style={{...inputS,flex:1}} />
+                <span style={{fontSize:12,color:T.muted,fontFamily:"monospace"}}>%/yr</span>
+              </div>
+              <button onClick={add} style={{background:T.green,border:"none",color:T.bg,borderRadius:6,padding:"8px 14px",cursor:"pointer",fontSize:12,fontFamily:"monospace",fontWeight:700}}>Add</button>
+              <button onClick={()=>setAdding(false)} style={{background:T.faint,border:"none",color:T.muted,borderRadius:6,padding:"8px 10px",cursor:"pointer",fontSize:12,fontFamily:"monospace"}}>Cancel</button>
+            </div>
+          </div>
+        ):(
+          <div style={{padding:"10px 18px",borderTop:"1px solid "+T.border}}>
+            <button onClick={()=>setAdding(true)} style={{background:T.green+"18",border:"1px solid "+T.green+"44",color:T.green,borderRadius:6,padding:"7px 16px",cursor:"pointer",fontSize:11,fontFamily:"monospace",fontWeight:700}}>+ Add Asset</button>
+          </div>
+        )}
+      </CollapsibleSection>
+
+      {/* Category allocation */}
+      {active.length>0&&(
+        <CollapsibleSection title="Allocation by Category" icon="📊" accentColor={T.blue} defaultOpen={true}>
+          <div style={{padding:"16px 18px"}}>
+            {byCategory.map(([cat,val])=>{
+              const c2=catMap[cat]||{emoji:"📦",label:"Other"};
+              const barPct=total>0?(val/total)*100:0;
+              const catColor=[T.green,T.blue,T.amber,T.purple,T.red,T.muted,T.green+"88",T.blue+"88"][ASSET_CATEGORIES.findIndex(x=>x.value===cat)%8]||T.muted;
+              return (
+                <div key={cat} style={{marginBottom:12}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,alignItems:"center"}}>
+                    <span style={{fontSize:12,color:T.text,fontFamily:"monospace"}}>{c2.emoji} {c2.label}</span>
+                    <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                      <span style={{fontSize:11,color:T.muted,fontFamily:"monospace"}}>{pct(barPct)}</span>
+                      <span style={{fontSize:13,color:catColor,fontFamily:"monospace",fontWeight:700}}>{fmtK(val)}</span>
+                    </div>
+                  </div>
+                  <div style={{height:6,background:T.faint,borderRadius:3}}>
+                    <div style={{height:"100%",width:barPct+"%",background:catColor+"aa",borderRadius:3,transition:"width 0.3s"}} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </CollapsibleSection>
+      )}
+
+      {/* Growth projection table */}
+      {active.length>0&&(
+        <CollapsibleSection title="Growth Projections" icon="📈" accentColor={T.purple} defaultOpen={false}>
+          <div style={{overflowX:"auto",padding:"0"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,fontFamily:"monospace"}}>
+              <thead>
+                <tr style={{background:T.surface}}>
+                  {["Asset","Current","5 Years","10 Years","20 Years","Return"].map(h=>(
+                    <th key={h} style={{padding:"10px 14px",textAlign:h==="Asset"?"left":"right",color:T.muted,fontSize:10,letterSpacing:1.2,textTransform:"uppercase",borderBottom:"1px solid "+T.border,whiteSpace:"nowrap",fontWeight:600}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {active.map((a,i)=>{
+                  const r=(Number(a.annualReturn)||0)/100;
+                  const v=Number(a.value)||0;
+                  return (
+                    <tr key={a.id} style={{background:i%2===0?T.surface:"transparent",borderBottom:"1px solid "+T.border}}>
+                      <td style={{padding:"10px 14px",color:T.text,fontWeight:600}}>{(catMap[a.category]||{emoji:"📦"}).emoji} {a.name}</td>
+                      <td style={{padding:"10px 14px",textAlign:"right",color:T.muted}}>{fmtK(v)}</td>
+                      <td style={{padding:"10px 14px",textAlign:"right",color:T.green}}>{fmtK(Math.round(v*Math.pow(1+r,5)))}</td>
+                      <td style={{padding:"10px 14px",textAlign:"right",color:T.blue,fontWeight:700}}>{fmtK(Math.round(v*Math.pow(1+r,10)))}</td>
+                      <td style={{padding:"10px 14px",textAlign:"right",color:T.purple,fontWeight:700}}>{fmtK(Math.round(v*Math.pow(1+r,20)))}</td>
+                      <td style={{padding:"10px 14px",textAlign:"right",color:T.amber}}>{pct(Number(a.annualReturn)||0)}</td>
+                    </tr>
+                  );
+                })}
+                <tr style={{background:T.surface,borderTop:"2px solid "+T.border}}>
+                  <td style={{padding:"10px 14px",color:T.text,fontWeight:700,fontFamily:"monospace",textTransform:"uppercase",fontSize:10,letterSpacing:1}}>Total</td>
+                  <td style={{padding:"10px 14px",textAlign:"right",color:T.green,fontWeight:700}}>{fmtK(total)}</td>
+                  {projections.map(p=>(
+                    <td key={p.y} style={{padding:"10px 14px",textAlign:"right",color:T.green,fontWeight:700}}>{fmtK(p.total)}</td>
+                  ))}
+                  <td style={{padding:"10px 14px",textAlign:"right",color:T.amber,fontWeight:700}}>{pct(wAvgRet)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </CollapsibleSection>
+      )}
+
+      {/* Asset insights */}
+      {insights.length>0&&(
+        <CollapsibleSection title="Asset Insights" icon="💡" accentColor={T.purple} defaultOpen={true}>
+          <div style={{padding:"14px 18px 18px"}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              {insights.map((ins,i)=>(
+                <div key={i} style={{background:ins.color+"0d",border:"1px solid "+ins.color+"33",borderRadius:10,padding:"12px 14px",display:"flex",gap:10,alignItems:"flex-start"}}>
+                  <span style={{fontSize:16,flexShrink:0}}>{ins.icon}</span>
+                  <p style={{margin:0,fontSize:11,color:T.muted,lineHeight:1.7}}>{ins.text}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </CollapsibleSection>
       )}
     </div>
   );
@@ -626,9 +1033,10 @@ function SavingsSection({ buckets, setBuckets }) {
   const total=useMemo(()=>sum(buckets,"amount"),[buckets]);
   const upd=(id,v)=>setBuckets(p=>p.map(b=>b.id===id?{...b,amount:v}:b));
   const updN=(id,v)=>setBuckets(p=>p.map(b=>b.id===id?{...b,name:v}:b));
+  const updR=(id,v)=>setBuckets(p=>p.map(b=>b.id===id?{...b,annualReturn:Math.min(30,Math.max(0,v))}:b));
   const tog=(id)=>setBuckets(p=>p.map(b=>b.id===id?{...b,excluded:!b.excluded}:b));
   const del=(id)=>setBuckets(p=>p.filter(b=>b.id!==id));
-  const add=()=>{ const a=parseFloat(nAmt); if(!nName.trim()||isNaN(a)||a<=0)return; setBuckets(p=>[...p,{id:uid(),name:nName.trim(),amount:a,excluded:false,custom:true}]); setNName("");setNAmt("");setAdding(false); };
+  const add=()=>{ const a=parseFloat(nAmt); if(!nName.trim()||isNaN(a)||a<=0)return; setBuckets(p=>[...p,{id:uid(),name:nName.trim(),amount:a,excluded:false,annualReturn:7.0,custom:true}]); setNName("");setNAmt("");setAdding(false); };
   const inputS={background:T.faint,border:"1px solid "+T.border,borderRadius:6,padding:"7px 10px",color:T.text,fontFamily:"monospace",fontSize:14,outline:"none"};
 
   return (
@@ -658,6 +1066,12 @@ function SavingsSection({ buckets, setBuckets }) {
                 <div style={{display:"flex",alignItems:"center",gap:7,flexShrink:0}}>
                   {!b.excluded&&<span style={{fontSize:10,color:T.muted,fontFamily:"monospace"}}>{pct(share)}</span>}
                   <InlineEdit value={b.amount} type="number" onCommit={v=>upd(b.id,v)} style={{fontSize:13,color:c,fontFamily:"monospace",fontWeight:700,textAlign:"right",maxWidth:90}} />
+                  {!b.excluded&&(
+                    <div title="Annual return %" style={{display:"flex",alignItems:"center",gap:2,background:T.faint,border:"1px solid "+T.border+"88",borderRadius:5,padding:"2px 6px"}}>
+                      <InlineEdit value={b.annualReturn??7} type="number" onCommit={v=>updR(b.id,v)} style={{fontSize:10,color:T.blue,fontFamily:"monospace",fontWeight:700,textAlign:"right",maxWidth:30}} />
+                      <span style={{fontSize:10,color:T.muted,fontFamily:"monospace"}}>%</span>
+                    </div>
+                  )}
                   <button onClick={()=>tog(b.id)} style={{background:"transparent",border:"1px solid "+T.border,color:T.muted,cursor:"pointer",fontSize:10,padding:"3px 7px",borderRadius:4,fontFamily:"monospace"}}>{b.excluded?"on":"off"}</button>
                   {b.custom&&<button onClick={()=>del(b.id)} style={{background:"transparent",border:"none",color:T.muted,cursor:"pointer",fontSize:18,padding:"0 2px",lineHeight:1}}>×</button>}
                 </div>
@@ -688,12 +1102,13 @@ function SavingsSection({ buckets, setBuckets }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // PROJECTION CHART
 // ══════════════════════════════════════════════════════════════════════════════
-function ProjChart({ monthlySavings, netBonus, includeBonus, intervalMode, fmtK }) {
+function ProjChart({ monthlySavings, netBonus, includeBonus, intervalMode, fmtK, targetNetWorth, weightedReturn, initialAssets }) {
   const T=useTheme();
   const [hovIdx,setHovIdx]=useState(null);
   const mode=useMemo(()=>INTERVAL_MODES.find(m=>m.id===intervalMode)||INTERVAL_MODES[2],[intervalMode]);
-  const data=useMemo(()=>mode.steps.map(y=>calcProjRow(y,monthlySavings,netBonus,includeBonus)),[mode,monthlySavings,netBonus,includeBonus]);
-  const ceiling=useMemo(()=>niceMax(Math.max(...data.map(d=>d.total),TARGET_USD*1.1)),[data]);
+  const data=useMemo(()=>mode.steps.map(y=>calcProjRow(y,monthlySavings,netBonus,includeBonus,weightedReturn,initialAssets||0)),[mode,monthlySavings,netBonus,includeBonus,weightedReturn,initialAssets]);
+  const tgt=Number(targetNetWorth)||DEFAULT_TARGET_NW;
+  const ceiling=useMemo(()=>niceMax(Math.max(...data.map(d=>d.total),tgt*1.1)),[data,tgt]);
   const CHART_H=200;
   const toH=v=>Math.round((v/ceiling)*CHART_H);
   const toPct=v=>((v/ceiling)*100)+"%";
@@ -707,7 +1122,7 @@ function ProjChart({ monthlySavings, netBonus, includeBonus, intervalMode, fmtK 
           <Lbl color={T.blue}>Net Worth Projection</Lbl>
           <div style={{fontSize:11,color:T.muted,fontFamily:"monospace"}}>7% annualised · {mode.label} intervals</div>
         </div>
-        <Pill label="Target $1.9M" color={T.amber} />
+        <Pill label={"Target "+fmtK(tgt)} color={T.amber} />
       </div>
       <div style={{display:"flex",gap:0}}>
         <div style={{display:"flex",flexDirection:"column-reverse",justifyContent:"space-between",width:48,flexShrink:0,height:CHART_H,paddingBottom:2}}>
@@ -715,14 +1130,14 @@ function ProjChart({ monthlySavings, netBonus, includeBonus, intervalMode, fmtK 
         </div>
         <div style={{flex:1,position:"relative",height:CHART_H}}>
           {grids.map((v,i)=><div key={i} style={{position:"absolute",left:0,right:0,bottom:toPct(v),borderTop:"1px dashed "+T.faint,pointerEvents:"none"}} />)}
-          {TARGET_USD<=ceiling&&(
-            <div style={{position:"absolute",left:0,right:0,bottom:toPct(TARGET_USD),borderTop:"1px dashed "+T.amber+"88",pointerEvents:"none"}}>
-              <span style={{position:"absolute",right:4,top:-13,fontSize:8,color:T.amber,fontFamily:"monospace",whiteSpace:"nowrap"}}>target</span>
+          {tgt<=ceiling&&(
+            <div style={{position:"absolute",left:0,right:0,bottom:toPct(tgt),borderTop:"1px dashed "+T.amber+"88",pointerEvents:"none"}}>
+              <span style={{position:"absolute",right:4,top:-13,fontSize:8,color:T.amber,fontFamily:"monospace",whiteSpace:"nowrap"}}>target {fmtK(tgt)}</span>
             </div>
           )}
           <div style={{position:"absolute",inset:0,display:"flex",alignItems:"flex-end",gap:isCompact?2:5,padding:"0 2px"}}>
             {data.map((d,idx)=>{
-              const barH=toH(d.total),invH=toH(d.inv),hit=d.total>=TARGET_USD,hov=hovIdx===idx;
+              const barH=toH(d.total),invH=toH(d.inv),hit=d.total>=tgt,hov=hovIdx===idx;
               return (
                 <div key={d.y} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",minWidth:0,position:"relative"}}
                   onMouseEnter={()=>setHovIdx(idx)} onMouseLeave={()=>setHovIdx(null)} onTouchStart={()=>setHovIdx(idx)}>
@@ -886,7 +1301,7 @@ function CashflowTab({ cashflow, setCashflow, monthlyIncome, monthlyExpenses, mo
   // ── One-off expense CRUD handlers ────────────────────────────────────────
   const addOneOff=(monthId)=>{
     const a=parseFloat(nAmount);
-    if(!nLabel.trim()||isNaN(a)||a<=0)return;
+    if(!nLabel.trim()||isNaN(a))return;
     setCashflow(cf=>({
       ...cf,
       months: extendedMonths.map(m=>m.id===monthId?{...m,oneOffs:[...(m.oneOffs||[]),{id:uid(),label:nLabel.trim(),amount:a}]}:m)
@@ -927,8 +1342,8 @@ function CashflowTab({ cashflow, setCashflow, monthlyIncome, monthlyExpenses, mo
     else list.push({ color:T.red, icon:"🔴", text:`Monthly shortfall of ${fmt(Math.abs(surplus))}. Your balance is declining each month. Review fixed costs first — they're the easiest permanent wins.` });
 
     // Insight 3: one-off cost planning
-    if(highOneOffMonths>0) list.push({ color:T.amber, icon:"📅", text:`${highOneOffMonths} month${highOneOffMonths>1?"s have":"has"} unusually high one-off costs. Planning ahead for these months — or smoothing them quarterly — can prevent cash stress.` });
-    else list.push({ color:T.purple, icon:"🗓️", text:`No months have unusually high one-off costs. Add anticipated expenses (holidays, car service, gifts) to specific months to keep your forecast accurate.` });
+    if(highOneOffMonths>0) list.push({ color:T.amber, icon:"📅", text:`${highOneOffMonths} month${highOneOffMonths>1?"s have":"has"} unusually high one-off cash movements. Planning ahead for these months — or smoothing them quarterly — can prevent cash stress.` });
+    else list.push({ color:T.purple, icon:"🗓️", text:`No months have unusually high one-off cash movements. Add anticipated expenses (holidays, car service, gifts) to specific months to keep your forecast accurate.` });
 
     // Insight 4: savings rate commentary
     if(savingsRate<15) list.push({ color:T.red, icon:"💰", text:`Your savings rate is ${savingsRate}% — below the 20% benchmark for building long-term wealth. A ${fmt(monthlyIncome*0.05)}/month increase would meaningfully improve your trajectory.` });
@@ -980,6 +1395,59 @@ function CashflowTab({ cashflow, setCashflow, monthlyIncome, monthlyExpenses, mo
 
   return (
     <div>
+      {/* ── CASH RUNWAY — moved here from Overview ─────────────────────── */}
+      {(()=>{
+        const rm=monthlyExpenses>0?openingBalance/monthlyExpenses:0;
+        const rt=monthlyExpenses*6;
+        const rp=rt>0?Math.min(100,(openingBalance/rt)*100):0;
+        const rc=rm>=6?T.green:rm>=3?T.amber:T.red;
+        const surplus=monthlyIncome-monthlyExpenses-monthlySavings;
+        const toTarget=rm<6&&surplus>0?Math.max(0,(rt-openingBalance)/surplus):null;
+        return (
+          <div style={{background:T.card,border:"1px solid "+rc+"44",borderRadius:14,padding:"16px 20px",marginBottom:14}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,flexWrap:"wrap",gap:10}}>
+              <div>
+                <Lbl color={rc}>Cash Runway — Liquid Balance</Lbl>
+                <div style={{fontSize:11,color:T.muted,marginTop:2}}>{fmt(monthlyExpenses)}/mo burn · 6-month target = {fmt(rt)}</div>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:11,color:T.muted,letterSpacing:1.5,textTransform:"uppercase"}}>Balance</span>
+                <input type="number" value={openingBalance}
+                  onChange={e=>setCashflow(cf=>({...cf,openingBalance:Math.max(0,Number(e.target.value))}))}
+                  style={{background:T.faint,border:"1px solid "+rc+"55",borderRadius:8,padding:"6px 12px",color:rc,fontFamily:"monospace",fontSize:15,fontWeight:700,outline:"none",width:130,textAlign:"right"}} />
+              </div>
+            </div>
+            <div style={{marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,fontSize:10,color:T.muted,letterSpacing:1}}>
+                <span>0</span><span style={{color:T.amber}}>3 mo — {fmt(monthlyExpenses*3)}</span><span style={{color:T.green}}>6 mo — {fmt(rt)}</span>
+              </div>
+              <div style={{position:"relative",height:10,background:T.faint,borderRadius:5}}>
+                <div style={{position:"absolute",left:"50%",top:0,width:1,height:"100%",background:T.amber+"55"}} />
+                <div style={{position:"absolute",left:0,top:0,height:"100%",width:rp+"%",background:"linear-gradient(90deg,"+rc+"88,"+rc+")",borderRadius:5,transition:"width 0.3s"}} />
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",marginTop:5,fontSize:11}}>
+                <span style={{color:rc,fontWeight:700}}>{(isFinite(rm)?rm:0).toFixed(1)} mo · {pct(rp)} of target</span>
+                {openingBalance<rt&&toTarget!==null&&<span style={{color:T.muted}}>~{toTarget.toFixed(1)} mo to target at current surplus</span>}
+                {openingBalance>=rt&&<span style={{color:T.green}}>✓ Fully funded</span>}
+              </div>
+            </div>
+            <div className="fc-runway4">
+              {[
+                {l:"Balance",       v:fmt(openingBalance),c:rc},
+                {l:"Monthly Burn",  v:fmt(monthlyExpenses),c:T.red},
+                {l:"To 6mo Target", v:openingBalance>=rt?"✓ Funded":fmt(rt-openingBalance),c:openingBalance>=rt?T.green:T.amber},
+                {l:"Months",        v:(isFinite(rm)?rm:0).toFixed(1)+" mo",c:rc},
+              ].map(s=>(
+                <div key={s.l} style={{background:T.surface,borderRadius:10,padding:"10px 14px"}}>
+                  <div style={{fontSize:10,color:T.muted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:4}}>{s.l}</div>
+                  <div style={{fontSize:14,color:s.c,fontFamily:"monospace",fontWeight:700}}>{s.v}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── SUMMARY KPIS ──────────────────────────────────────────────────── */}
       {/* Four quick numbers at the top so the user always sees the headline */}
       <div className="fc-cashflow-grid" style={{marginBottom:16}}>
@@ -1035,7 +1503,7 @@ function CashflowTab({ cashflow, setCashflow, monthlyIncome, monthlyExpenses, mo
               {l:"Healthy",c:T.green},
               {l:"Watch zone",c:T.amber},
               {l:"Deficit",c:T.red},
-              {l:"One-off costs",c:T.amber+"99"},
+              {l:"One-off Cash Movements",c:T.amber+"99"},
             ].map(x=>(
               <div key={x.l} style={{display:"flex",alignItems:"center",gap:4}}>
                 <div style={{width:8,height:8,borderRadius:2,background:x.c}} />
@@ -1146,7 +1614,7 @@ function CashflowTab({ cashflow, setCashflow, monthlyIncome, monthlyExpenses, mo
                         <div style={{display:"grid",gridTemplateColumns:"auto auto",gap:"3px 10px",fontSize:10,fontFamily:"monospace"}}>
                           <span style={{color:T.muted}}>Recurring surplus:</span>
                           <span style={{color:row.surplus>=0?T.green:T.red,fontWeight:700}}>{fmt(row.surplus)}</span>
-                          <span style={{color:T.muted}}>One-off costs:</span>
+                          <span style={{color:T.muted}}>One-off Cash Movements:</span>
                           <span style={{color:row.oneOffTotal>0?T.amber:T.muted}}>{row.oneOffTotal>0?"-"+fmt(row.oneOffTotal):"—"}</span>
                           <span style={{color:T.muted}}>Net movement:</span>
                           <span style={{color:row.netMonth>=0?T.green:T.red,fontWeight:700}}>{row.netMonth>=0?"+":""}{fmt(row.netMonth)}</span>
@@ -1248,7 +1716,7 @@ function CashflowTab({ cashflow, setCashflow, monthlyIncome, monthlyExpenses, mo
         )}
 
         <div style={{fontSize:10,color:T.muted,textAlign:"center",marginTop:6}}>
-          Hover any bar for a full breakdown · Click a month row below to add one-off expenses
+          Hover any bar for a full breakdown · Click a month row below to add one-off cash movements
         </div>
       </div>
 
@@ -1318,7 +1786,7 @@ function CashflowTab({ cashflow, setCashflow, monthlyIncome, monthlyExpenses, mo
                       </td>
                       <td style={{padding:"10px 12px",textAlign:"right",color:row.surplus>=0?T.green:T.red,fontWeight:600}}>{fmt(row.surplus)}</td>
                       <td style={{padding:"10px 12px",textAlign:"right",color:row.oneOffTotal>0?T.amber:T.muted}}>
-                        {row.oneOffTotal>0?"-"+fmt(row.oneOffTotal):"—"}
+                        {row.oneOffTotal!==0?(row.oneOffTotal<0?"+":"-")+fmt(Math.abs(row.oneOffTotal)):"—"}
                       </td>
                       <td style={{padding:"10px 12px",textAlign:"right",color:row.netMonth>=0?T.green:T.red,fontWeight:700}}>{row.netMonth>=0?"+":""}{fmt(row.netMonth)}</td>
                       <td style={{padding:"10px 12px",textAlign:"right",color:T.muted}}>{fmt(row.openingBal)}</td>
@@ -1331,9 +1799,9 @@ function CashflowTab({ cashflow, setCashflow, monthlyIncome, monthlyExpenses, mo
                       <tr style={{background:T.faint}}>
                         <td colSpan={6} style={{padding:"0"}}>
                           <div style={{padding:"14px 18px",borderTop:"1px solid "+T.border,borderBottom:"1px solid "+T.border}}>
-                            <div style={{fontSize:11,color:T.amber,fontFamily:"monospace",fontWeight:700,marginBottom:10,letterSpacing:1.2,textTransform:"uppercase"}}>One-Off Expenses — {row.label}</div>
+                            <div style={{fontSize:11,color:T.amber,fontFamily:"monospace",fontWeight:700,marginBottom:10,letterSpacing:1.2,textTransform:"uppercase"}}>One-off Cash Movements — {row.label}</div>
                             {(row.oneOffs||[]).length===0&&(
-                              <div style={{fontSize:11,color:T.muted,marginBottom:10}}>No one-off expenses this month. Add one below.</div>
+                              <div style={{fontSize:11,color:T.muted,marginBottom:10}}>No one-off cash movements this month. Add one below.</div>
                             )}
                             {(row.oneOffs||[]).map(o=>(
                               <div key={o.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8,flexWrap:"wrap"}}>
@@ -1350,7 +1818,7 @@ function CashflowTab({ cashflow, setCashflow, monthlyIncome, monthlyExpenses, mo
                               <input placeholder="Expense label (e.g. Holiday, Car service)" value={nLabel} onChange={e=>setNLabel(e.target.value)}
                                 onKeyDown={e=>e.key==="Enter"&&addOneOff(row.id)}
                                 style={{...inputS,flex:1,minWidth:180}} />
-                              <input type="number" placeholder="Amount" value={nAmount} onChange={e=>setNAmount(e.target.value)}
+                              <input type="number" placeholder="Amount (negative = income)" value={nAmount} onChange={e=>setNAmount(e.target.value)}
                                 onKeyDown={e=>e.key==="Enter"&&addOneOff(row.id)}
                                 style={{...inputS,width:110}} />
                               <button onClick={()=>addOneOff(row.id)} style={{background:T.amber,border:"none",color:T.bg,borderRadius:6,padding:"8px 14px",cursor:"pointer",fontSize:12,fontFamily:"monospace",fontWeight:700}}>Add</button>
@@ -1381,7 +1849,7 @@ function CashflowTab({ cashflow, setCashflow, monthlyIncome, monthlyExpenses, mo
       {/* Tips */}
       <div style={{background:T.amber+"12",border:"1px solid "+T.amber+"33",borderRadius:12,padding:"14px 18px",fontSize:11,color:T.muted,lineHeight:1.8}}>
         <span style={{color:T.amber,fontWeight:700}}>💡 How to use Cashflow: </span>
-        Use the view buttons to extend your forecast from 12 months to 5 years. Hover any bar in the chart for a full breakdown. Click a month row in the table to add one-off costs (holidays, car service, events). All changes update your balance forecast instantly.
+        Use the view buttons to extend your forecast from 12 months to 5 years. Hover any bar in the chart for a full breakdown. Click a month row in the table to add one-off cash movements (holidays, car service, events). All changes update your balance forecast instantly.
       </div>
     </div>
   );
@@ -1422,7 +1890,7 @@ function HealthScore({ savingsRate, housingPct, totalExpenses, netIncome }) {
 function LandingPage({ onGetStarted }) {
   const T=useTheme();
   const features=[
-    {icon:"🌍",title:"Multi-Country Tax Engine",      desc:"Accurate net income for US, UK, Canada, Australia & Germany — 2024/25 tax rates."},
+    {icon:"🌍",title:"Multi-Country Tax Engine",      desc:"Accurate net income for US, UK, Canada, Australia, Germany & Nigeria — 2024/25 rates."},
     {icon:"📅",title:"12-Month Cashflow Tracker",     desc:"Month-by-month cashflow with one-off expense tracking. See your cash floor before it hits."},
     {icon:"✨",title:"AI Finance Advisor",            desc:"Ask Claude AI anything about your finances. It answers using your actual numbers."},
     {icon:"💡",title:"Finance Glossary",             desc:"28 terms in plain English. Tap the lightbulb anytime — no jargon left unexplained."},
@@ -1438,7 +1906,7 @@ function LandingPage({ onGetStarted }) {
       <nav style={{padding:"16px clamp(20px,5vw,60px)",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1px solid "+T.border,position:"sticky",top:0,background:T.bg+"ee",backdropFilter:"blur(10px)",zIndex:100}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <span style={{fontSize:19,fontWeight:800,color:T.accent,letterSpacing:-0.5,fontFamily:"monospace"}}>FinCommand</span>
-          {!IS_CONFIGURED&&<span style={{fontSize:10,color:T.amber,background:T.amber+"22",padding:"3px 8px",borderRadius:8,fontFamily:"monospace"}}>DEMO</span>}
+          {IS_DEMO&&<span style={{fontSize:10,color:T.amber,background:T.amber+"22",padding:"3px 8px",borderRadius:8,fontFamily:"monospace"}}>DEMO</span>}
         </div>
         <button onClick={onGetStarted} style={{background:"transparent",border:"1px solid "+T.accent+"66",color:T.accent,borderRadius:8,padding:"8px 20px",cursor:"pointer",fontSize:12,letterSpacing:1}}>Sign In</button>
       </nav>
@@ -1454,7 +1922,7 @@ function LandingPage({ onGetStarted }) {
           <button onClick={onGetStarted} style={{background:T.accent,border:"none",color:T.bg,borderRadius:12,padding:"14px 34px",cursor:"pointer",fontSize:14,fontWeight:700,letterSpacing:0.3}}>Get Started — Free</button>
           <button onClick={onGetStarted} style={{background:"transparent",border:"1px solid "+T.border,color:T.muted,borderRadius:12,padding:"14px 26px",cursor:"pointer",fontSize:14}}>Sign In</button>
         </div>
-        <div style={{marginTop:22,fontSize:11,color:T.muted,letterSpacing:2,textTransform:"uppercase"}}>🇺🇸 US · 🇬🇧 UK · 🇨🇦 Canada · 🇦🇺 Australia · 🇩🇪 Germany</div>
+        <div style={{marginTop:22,fontSize:11,color:T.muted,letterSpacing:2,textTransform:"uppercase"}}>🇺🇸 US · 🇬🇧 UK · 🇨🇦 Canada · 🇦🇺 Australia · 🇩🇪 Germany · 🇳🇬 Nigeria</div>
       </div>
       <div style={{padding:"clamp(40px,6vh,80px) clamp(20px,5vw,60px)",width:"100%",maxWidth:1400,margin:"0 auto",boxSizing:"border-box"}}>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:16}}>
@@ -1503,7 +1971,7 @@ function AuthPage({ onBack, onAuthSuccess }) {
       const fn = mode==="signup"?db.signUpEmail:db.signInEmail;
       const{user,error:e}=await fn(email.trim(),password);
       if(e) throw new Error(typeof e==="string"?e:e?.message||"Authentication failed.");
-      if(mode==="signup"&&IS_CONFIGURED&&!user?.confirmed_at&&!user?.email_confirmed_at){
+      if(mode==="signup"&&!IS_DEMO&&!user?.confirmed_at&&!user?.email_confirmed_at){
         setMessage("Account created! Check your email to confirm, then sign in.");
         setLoading(false); return;
       }
@@ -1516,7 +1984,7 @@ function AuthPage({ onBack, onAuthSuccess }) {
     setLoading(true);setError("");
     const{error:e}=await db.signInGoogle();
     if(e){ setError(typeof e==="string"?e:e?.message||"Google sign-in failed."); setLoading(false); return; }
-    if(!IS_CONFIGURED) await onAuthSuccess();
+    if(IS_DEMO) await onAuthSuccess();
     setLoading(false);
   };
   // Apple & Microsoft OAuth — commented out pending provider setup
@@ -1546,7 +2014,7 @@ function AuthPage({ onBack, onAuthSuccess }) {
           <div style={{fontSize:13,color:T.muted}}>
             {mode==="signup"?"Create your account":mode==="reset"?"Reset your password":"Welcome back"}
           </div>
-          {!IS_CONFIGURED&&<div style={{marginTop:10,fontSize:11,color:T.amber,background:T.amber+"18",padding:"6px 14px",borderRadius:8,fontFamily:"monospace",display:"inline-block"}}>Demo mode — any email works</div>}
+          {IS_DEMO&&<div style={{marginTop:10,fontSize:11,color:T.amber,background:T.amber+"18",padding:"6px 14px",borderRadius:8,fontFamily:"monospace",display:"inline-block"}}>Demo mode — auto logged in</div>}
         </div>
 
         <div style={{background:T.card,border:"1px solid "+T.border,borderRadius:16,padding:"28px"}}>
@@ -1626,7 +2094,7 @@ function AuthPage({ onBack, onAuthSuccess }) {
             )}
           </div>
         </div>
-        {IS_CONFIGURED&&(
+        {!IS_DEMO&&(
           <div style={{textAlign:"center",marginTop:14,fontSize:11,color:T.muted,lineHeight:1.7}}>
             Your data is encrypted and stored securely.<br/>We never share your information.
           </div>
@@ -1653,7 +2121,7 @@ function OnboardingPage({ user, onComplete }) {
   const handleComplete=async()=>{
     setSaving(true);setError("");
     const profile={country,name:name.trim(),grossSalary:gross,currency:cfg.currency};
-    const dashboard={inclBonus:false,annualBonus:0,customIncome:[],fixedItems:DEFAULT_FIXED(),varItems:DEFAULT_VAR(),savBuckets:DEFAULT_SAV(),usdBalance:5000,projInterval:"1y",cashflow:DEFAULT_CASHFLOW(),inclRental:false};
+    const dashboard={inclBonus:false,annualBonus:0,customIncome:[],fixedItems:DEFAULT_FIXED(),varItems:DEFAULT_VAR(),savBuckets:DEFAULT_SAV(),assets:DEFAULT_ASSETS(),projInterval:"1y",cashflow:DEFAULT_CASHFLOW(),targetNetWorth:DEFAULT_TARGET_NW,studentLoan:{enabled:false,plan:"plan2",postgrad:false}};
     const{error:e}=await db.saveUserData(user.id,{profile,dashboard});
     if(e){setError("Could not save. Please try again.");setSaving(false);return;}
     onComplete(profile,dashboard);
@@ -2092,14 +2560,14 @@ function HowToGuide({ onClose }) {
       tip:"Monthly Surplus = Income minus all Expenses minus all Savings goals. Even £100 surplus means you're moving forward." },
     { group:"Cashflow",   icon:"📅", accent:"#facc15",
       title:"Cashflow — Month by Month",
-      body:"Cashflow shows a running picture of your money through the year. You can extend the view from 12 months out to 5 years. Add one-off costs like a holiday or car service to specific months — the chart updates instantly.",
+      body:"Cashflow shows a running picture of your money through the year. You can extend the view from 12 months out to 5 years. Add one-off cash movements like a holiday or car service to specific months — the chart updates instantly.",
       tip:"Look at the bar chart for any red months. These are months where your balance dips — plan ahead for them." },
     { group:"Expenses",   icon:"💸", accent:"#f87171",
       title:"Editing Your Expenses",
       body:"Go to the Expenses tab and click any number to change it. Your rent, groceries, subscriptions — all editable in seconds. Use the 'off' toggle next to any expense to exclude it temporarily without deleting it.",
       tip:"Try turning off your gym or subscription costs to see the immediate impact on your monthly surplus." },
     { group:"Cashflow2",  icon:"🗓️", accent:"#facc15",
-      title:"One-Off Expenses",
+      title:"One-off Cash Movements",
       body:"In Cashflow, click any month row to add a one-off cost — a holiday, car repair, moving costs, a special occasion. These sit outside your regular budget and are tracked separately so your monthly figures stay clean.",
       tip:"January and September are often expensive months. Plan for them by adding one-offs in advance." },
     { group:"Income Tab", icon:"➕", accent:"#34d399",
@@ -2284,20 +2752,26 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
   const [fixedItems,  setFixedItems] =useState(()=>initialData?.fixedItems||DEFAULT_FIXED());
   const [varItems,    setVarItems]   =useState(()=>initialData?.varItems  ||DEFAULT_VAR());
   const [savBuckets,  setSavBuckets] =useState(()=>initialData?.savBuckets||DEFAULT_SAV());
-  const [usdBalance,  setUsdBalance] =useState(initialData?.usdBalance||5000);
-  const [projInterval,setProjInterval]=useState(initialData?.projInterval||"1y");
-  const [cashflow,    setCashflow]   =useState(()=>initialData?.cashflow||DEFAULT_CASHFLOW());
+  const [assets,      setAssets]     =useState(()=>initialData?.assets||DEFAULT_ASSETS());
+  const [targetNetWorth,setTargetNetWorth]=useState(()=>Number(initialData?.targetNetWorth)||DEFAULT_TARGET_NW);
+  const [studentLoan,  setStudentLoan] =useState(()=>initialData?.studentLoan||{enabled:false,plan:"plan2",postgrad:false});
+  const [projInterval, setProjInterval]=useState(initialData?.projInterval||"1y");
+  const [cashflow,    setCashflow]   =useState(()=>{
+    const cf = initialData?.cashflow || DEFAULT_CASHFLOW();
+    if (initialData?.usdBalance && cf.openingBalance===5000) cf.openingBalance=initialData.usdBalance;
+    return cf;
+  });
   const [saveStatus,  setSaveStatus] =useState("idle");
   const saveTimer=useRef(null); const pendingSave=useRef(null);
 
-  const {netSalary,netBonus,effectiveRate}=useMemo(()=>calcTax(country,grossSalary,annualBonus),[country,grossSalary,annualBonus]);
+  const {netSalary,netBonus,effectiveRate,monthlyStudentLoanRepayment=0}=useMemo(()=>calcTax(country,grossSalary,annualBonus,studentLoan),[country,grossSalary,annualBonus,studentLoan]);
 
   const STATUS_CFG=useMemo(()=>({
     idle:  {label:"",               color:T.muted},
-    saving:{label:"● saving…",     color:T.muted},
-    saved: {label:"✓ saved",       color:T.green},
-    error: {label:"⚠ save failed", color:T.amber},
-  }),[T.muted,T.green,T.amber]);
+    saving:{label:"● saving…",      color:T.blue},
+    saved: {label:"✓ saved",        color:T.green},
+    error: {label:"⚠ save failed",  color:T.red},
+  }),[T.muted,T.green,T.blue,T.red]);
 
   useEffect(()=>{
     const h=()=>{ if(pendingSave.current) db.saveUserData(user.id,pendingSave.current); };
@@ -2307,8 +2781,8 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
 
   const getSnapshot=useCallback(()=>({
     profile:{...profile,grossSalary},
-    dashboard:{inclBonus,annualBonus,customIncome,fixedItems,varItems,savBuckets,usdBalance,projInterval,cashflow},
-  }),[profile,grossSalary,inclBonus,annualBonus,customIncome,fixedItems,varItems,savBuckets,usdBalance,projInterval,cashflow]);
+    dashboard:{inclBonus,annualBonus,customIncome,fixedItems,varItems,savBuckets,assets,projInterval,cashflow,targetNetWorth,studentLoan},
+  }),[profile,grossSalary,inclBonus,annualBonus,customIncome,fixedItems,varItems,savBuckets,assets,projInterval,cashflow,targetNetWorth,studentLoan]);
 
   useEffect(()=>{
     setSaveStatus("saving");
@@ -2324,30 +2798,40 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
   },[getSnapshot,user.id]);
 
   const derived=useMemo(()=>{
-    const bonus  =inclBonus?netBonus:0;
-    const extra  =sum(customIncome,"amount");
-    const income =netSalary+bonus+extra;
-    const fixed  =sum(fixedItems,"amount");
-    const variable=sum(varItems,"amount");
-    const savings=sum(savBuckets,"amount");
-    const expenses=fixed+variable;
-    const rem    =income-expenses-savings;
-    const sRate  =income>0?(savings/income)*100:0;
-    const rentAmt=(fixedItems.find(i=>/rent|mortgage/i.test(i.name))?.amount)||0;
-    const housing=income>0?(rentAmt/income)*100:0;
-    return {bonus,extra,income,fixed,variable,savings,expenses,rem,sRate,rentAmt,housing};
-  },[inclBonus,netBonus,netSalary,customIncome,fixedItems,varItems,savBuckets]);
+    const bonus    =inclBonus?netBonus:0;
+    const extra    =sum(customIncome,"amount");
+    const income   =netSalary+bonus+extra;
+    const fixed    =sum(fixedItems,"amount");
+    const variable =sum(varItems,"amount");
+    const savings  =sum(savBuckets,"amount");
+    const expenses =fixed+variable;
+    const rem      =income-expenses-savings;
+    const sRate    =income>0?(savings/income)*100:0;
+    const rentAmt  =(fixedItems.find(i=>/rent|mortgage/i.test(i.name))?.amount)||0;
+    const housing  =income>0?(rentAmt/income)*100:0;
+    // Assets: total current value of all non-excluded assets
+    const totalAssets=(assets||[]).filter(a=>!a.excluded).reduce((s,a)=>s+(Number(a.value)||0),0);
+    const weightedAssetReturn=(()=>{
+      const active=(assets||[]).filter(a=>!a.excluded&&a.value>0);
+      const tot=active.reduce((s,a)=>s+(Number(a.value)||0),0);
+      if(tot<=0) return 0;
+      return active.reduce((s,a)=>s+(Number(a.value)||0)*(Number(a.annualReturn)||0),0)/tot;
+    })();
+    return {bonus,extra,income,fixed,variable,savings,expenses,rem,sRate,rentAmt,housing,totalAssets,weightedAssetReturn};
+  },[inclBonus,netBonus,netSalary,customIncome,fixedItems,varItems,savBuckets,assets]);
 
-  const {bonus,extra,income,fixed,variable,savings,expenses,rem,sRate,rentAmt,housing}=derived;
+  const {bonus,extra,income,fixed,variable,savings,expenses,rem,sRate,rentAmt,housing,totalAssets,weightedAssetReturn}=derived;
 
+  const openingBalance = cashflow.openingBalance;
+  const weightedReturn = useMemo(()=>weightedAvgReturn(savBuckets),[savBuckets]);
   const runway=useMemo(()=>{
-    const months=expenses>0?usdBalance/expenses:0;
-    const target=expenses*6; const pctV=target>0?Math.min(100,(usdBalance/target)*100):0;
+    const months=expenses>0?openingBalance/expenses:0;
+    const target=expenses*6; const pctV=target>0?Math.min(100,(openingBalance/target)*100):0;
     const color=months>=6?T.green:months>=3?T.amber:T.red;
     const verdict=months>=6?"✓ Solid":months>=3?"~ Building":"⚠ Thin";
-    const toTgt=rem>0?Math.max(0,(target-usdBalance)/rem):null;
+    const toTgt=rem>0?Math.max(0,(target-openingBalance)/rem):null;
     return {months,target,pct:pctV,color,verdict,toTarget:toTgt};
-  },[expenses,usdBalance,rem,T.green,T.amber,T.red]);
+  },[expenses,openingBalance,rem,T.green,T.amber,T.red]);
 
   const incomeItems=useMemo(()=>[
     {id:"sal",name:"Base Salary (net/mo)",     amount:netSalary,color:T.green,type:"salary",auto:true,excluded:false,sub:cfg.symbol+(grossSalary/1000).toFixed(0)+"k gross · ~"+effectiveRate+"% tax"},
@@ -2407,6 +2891,35 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
             <SliderRow label="Annual Bonus"        value={annualBonus} min={0}     max={300000} step={5000} onChange={setAnnualBonus} format={v=>cfg.symbol+(v/1000).toFixed(0)+"k"} color={T.amber} sublabel={"Net ≈ "+fmt(netBonus)+"/mo avg"} />
           </div>
           <Toggle checked={inclBonus} onChange={setInclBonus} color={T.amber} label="Include Bonus Income" sublabel={inclBonus?"+"+fmt(netBonus)+"/mo added to income":"Bonus excluded from calculations"} />
+          {country==="UK"&&(
+            <div style={{marginTop:10}}>
+              <Toggle checked={studentLoan.enabled} onChange={v=>setStudentLoan(s=>({...s,enabled:v}))} color={T.purple}
+                label="Student Loan Repayments"
+                sublabel={studentLoan.enabled?"Deducting "+fmt(monthlyStudentLoanRepayment)+"/mo from net salary":"Toggle on if you have a UK student loan"} />
+              {studentLoan.enabled&&(
+                <div style={{background:T.surface,border:"1px solid "+T.purple+"33",borderRadius:10,padding:"14px 16px",marginTop:8}}>
+                  <div style={{fontSize:10,color:T.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:10}}>Repayment Plan</div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+                    {Object.entries(cfg.studentLoanPlans||{}).filter(([k])=>k!=="postgrad").map(([key,plan])=>(
+                      <div key={key} onClick={()=>setStudentLoan(s=>({...s,plan:key}))}
+                        style={{padding:"10px 12px",borderRadius:8,cursor:"pointer",
+                          background:studentLoan.plan===key?T.purple+"22":T.faint,
+                          border:"1px solid "+(studentLoan.plan===key?T.purple+"66":T.border),transition:"all 0.15s"}}>
+                        <div style={{fontSize:11,fontWeight:700,color:studentLoan.plan===key?T.purple:T.text,fontFamily:"monospace"}}>{plan.label}</div>
+                        <div style={{fontSize:10,color:T.muted,marginTop:3}}>Repay {(plan.rate*100).toFixed(0)}% over £{plan.threshold.toLocaleString()}/yr</div>
+                      </div>
+                    ))}
+                  </div>
+                  <Toggle checked={studentLoan.postgrad||false} onChange={v=>setStudentLoan(s=>({...s,postgrad:v}))} color={T.blue}
+                    label="Also repaying Postgraduate Loan"
+                    sublabel="6% on earnings above £21,000/yr — stacks with main plan" />
+                  <div style={{marginTop:10,padding:"8px 12px",background:T.purple+"0d",border:"1px solid "+T.purple+"22",borderRadius:8,fontSize:11,color:T.muted}}>
+                    <span style={{color:T.purple,fontWeight:700}}>Deducting: </span>{fmt(monthlyStudentLoanRepayment)}/mo from net take-home
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           <div style={{display:"flex",gap:16,flexWrap:"wrap",padding:"12px 14px",background:T.surface,borderRadius:10,marginTop:14}}>
             {[
               {l:"Net Salary",    v:fmt(netSalary),                       c:T.green},
@@ -2441,47 +2954,33 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
 
         {/* ══ OVERVIEW ══ */}
         {tab==="overview"&&(<>
-          <div className="fc-grid-5" style={{marginBottom:14}}>
-            <StatCard label="Total Expenses"  value={fmt(expenses)} color={T.red}                      sub={pct(income>0?(expenses/income)*100:0)+" of income"} />
-            <StatCard label="Total Savings"   value={fmt(savings)}  color={T.green}                    sub={pct(sRate)+" savings rate"} />
-            <StatCard label="Effective Tax"   value={effectiveRate+"%"} color={T.amber}                sub={"~"+fmt(netSalary*12)+" net/yr"} />
-            <StatCard label="Monthly Surplus" value={(rem>=0?"+":"")+fmt(rem)} color={rem>=0?T.green:T.red} bg={rem>=0?T.green+"14":T.red+"0f"} sub="After all goals" />
-            <StatCard label="Cash Runway"     value={runway.months.toFixed(1)+" mo"} color={runway.color} bg={runway.color+"14"} sub={fmt(usdBalance)+" liquid · "+runway.verdict} />
+          <div className="fc-grid-3" style={{marginBottom:14}}>
+            <StatCard label="Monthly Surplus" value={(rem>=0?"+":"")+fmt(rem)} color={rem>=0?T.green:T.red} bg={rem>=0?T.green+"14":T.red+"0f"} sub={pct(income>0?(rem/income)*100:0)+" of income"} />
+            <StatCard label="Net Worth Est."  value={fmtK(totalAssets+openingBalance)} color={T.purple} sub={fmtK(totalAssets)+" assets · "+fmt(openingBalance)+" liquid"} />
+            <StatCard label="Cash Runway"     value={(isFinite(runway.months)?runway.months:0).toFixed(1)+" mo"} color={runway.color} bg={runway.color+"14"} sub={fmt(openingBalance)+" liquid · "+runway.verdict} />
+          </div>
+          <div className="fc-grid-3" style={{marginBottom:14}}>
+            <StatCard label="Total Expenses"  value={fmt(expenses)} color={T.red}   sub={pct(income>0?(expenses/income)*100:0)+" of income"} />
+            <StatCard label="Total Savings"   value={fmt(savings)}  color={T.green} sub={pct(sRate)+" savings rate"} />
+            <StatCard label="Effective Tax"   value={effectiveRate+"%"} color={T.amber} sub={"~"+fmt(netSalary*12)+" net/yr"} />
           </div>
 
-          {/* Runway card */}
-          <div style={{background:T.card,border:"1px solid "+runway.color+"44",borderRadius:14,padding:"16px 20px",marginBottom:14}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,flexWrap:"wrap",gap:10}}>
-              <div>
-                <Lbl color={runway.color}>Cash Runway — Liquid Balance</Lbl>
-                <div style={{fontSize:11,color:T.muted,marginTop:2}}>{fmt(expenses)}/mo burn · 6-month target = {fmt(runway.target)}</div>
-              </div>
-              <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <span style={{fontSize:11,color:T.muted,letterSpacing:1.5,textTransform:"uppercase"}}>Balance</span>
-                <input type="number" value={usdBalance} onChange={e=>setUsdBalance(Math.max(0,Number(e.target.value)))}
-                  style={{background:T.faint,border:"1px solid "+runway.color+"55",borderRadius:8,padding:"6px 12px",color:runway.color,fontFamily:"monospace",fontSize:15,fontWeight:700,outline:"none",width:130,textAlign:"right"}} />
-              </div>
+          {/* Runway mini-card — full detail in Cashflow tab */}
+          <div style={{background:T.card,border:"1px solid "+runway.color+"44",borderRadius:14,padding:"14px 18px",marginBottom:14}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:8}}>
+              <Lbl color={runway.color}>Cash Runway</Lbl>
+              <button onClick={()=>setTab("cashflow")} style={{background:T.faint,border:"1px solid "+T.border,color:T.muted,borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:10,fontFamily:"monospace"}}>Full detail in Cashflow →</button>
             </div>
-            <div style={{marginBottom:10}}>
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,fontSize:10,color:T.muted,letterSpacing:1}}>
-                <span>0</span><span style={{color:T.amber}}>3 mo — {fmt(expenses*3)}</span><span style={{color:T.green}}>6 mo — {fmt(runway.target)}</span>
-              </div>
-              <div style={{position:"relative",height:10,background:T.faint,borderRadius:5}}>
-                <div style={{position:"absolute",left:"50%",top:0,width:1,height:"100%",background:T.amber+"55"}} />
-                <div style={{position:"absolute",left:0,top:0,height:"100%",width:runway.pct+"%",background:"linear-gradient(90deg,"+runway.color+"88,"+runway.color+")",borderRadius:5,transition:"width 0.3s"}} />
-              </div>
-              <div style={{display:"flex",justifyContent:"space-between",marginTop:5,fontSize:11}}>
-                <span style={{color:runway.color,fontWeight:700}}>{runway.months.toFixed(1)} mo · {pct(runway.pct)} of target</span>
-                {usdBalance<runway.target&&runway.toTarget!==null&&<span style={{color:T.muted}}>~{runway.toTarget.toFixed(1)} mo to target</span>}
-                {usdBalance>=runway.target&&<span style={{color:T.green}}>✓ Fully funded</span>}
-              </div>
+            <div style={{position:"relative",height:8,background:T.faint,borderRadius:4,marginBottom:8}}>
+              <div style={{position:"absolute",left:"50%",top:0,width:1,height:"100%",background:T.amber+"55"}} />
+              <div style={{position:"absolute",left:0,top:0,height:"100%",width:runway.pct+"%",background:"linear-gradient(90deg,"+runway.color+"88,"+runway.color+")",borderRadius:4,transition:"width 0.3s"}} />
             </div>
             <div className="fc-runway4">
               {[
-                {l:"Balance",      v:fmt(usdBalance),                                                    c:runway.color},
-                {l:"Monthly Burn", v:fmt(expenses),                                                      c:T.red},
-                {l:"To 6mo Target",v:usdBalance>=runway.target?"✓ Funded":fmt(runway.target-usdBalance), c:usdBalance>=runway.target?T.green:T.amber},
-                {l:"Months",       v:runway.months.toFixed(1)+" mo",                                     c:runway.color},
+                {l:"Liquid Balance", v:fmt(openingBalance),c:runway.color},
+                {l:"Monthly Burn",   v:fmt(expenses),c:T.red},
+                {l:"6-mo Shortfall", v:openingBalance>=runway.target?"✓ Funded":fmt(runway.target-openingBalance),c:openingBalance>=runway.target?T.green:T.amber},
+                {l:"Runway",         v:(isFinite(runway.months)?runway.months:0).toFixed(1)+" mo",c:runway.color},
               ].map(s=>(
                 <div key={s.l} style={{background:T.surface,borderRadius:10,padding:"10px 14px"}}>
                   <div style={{fontSize:10,color:T.muted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:4}}>{s.l}</div>
@@ -2490,9 +2989,9 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
               ))}
             </div>
           </div>
-
-          {/* Allocation bar */}
-          <div style={{background:T.card,border:"1px solid "+T.border,borderRadius:12,padding:"14px 18px",marginBottom:14}}>
+                    {/* Allocation bar */}
+          <CollapsibleSection title="Income Allocation" icon="🧮" accentColor={T.muted} defaultOpen={true}>
+          <div style={{padding:"14px 18px"}}>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:4}}>
               <Lbl>Monthly Allocation — {fmt(income)} total</Lbl>
               <span style={{fontSize:10,color:T.green,fontFamily:"monospace"}}>Savings: {pct(sRate)}</span>
@@ -2511,30 +3010,33 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
               ))}
             </div>
           </div>
+          </CollapsibleSection>
 
           {/* P&L statement */}
-          <div style={cardS}>
-            {[
-              {label:"Net Salary /mo",        val:netSalary,    color:T.green,                          dim:false},
-              {label:"Bonus /mo (avg)",        val:bonus,        color:inclBonus?T.amber:T.muted,        dim:!inclBonus},
-              {label:"Other Income",           val:extra,        color:extra>0?T.purple:T.muted,         dim:extra===0},
-              {label:"Fixed Expenses",         val:-fixed,       color:T.red,                            dim:false},
-              {label:"Variable Expenses",      val:-variable,    color:T.red,                            dim:false},
-              {label:"Savings & Investments",  val:-savings,     color:T.blue,                           dim:false},
-              {label:"Monthly Surplus",        val:rem,          color:rem>=0?T.green:T.red,             bold:true},
-            ].map((r,i)=>(
-              <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 18px",borderBottom:i<6?"1px solid "+T.border:"none",background:r.bold?T.surface:"transparent",opacity:r.dim?0.38:1}}>
-                <span style={{fontSize:r.bold?12:11,color:r.bold?T.text:T.muted,fontWeight:r.bold?700:400,textTransform:r.bold?"uppercase":"none",letterSpacing:r.bold?1.2:0}}>{r.label}</span>
-                <span style={{fontSize:r.bold?17:13,color:r.color,fontWeight:r.bold?700:500,fontFamily:"monospace"}}>{r.val>=0?fmt(r.val):"-"+fmt(Math.abs(r.val))}</span>
-              </div>
-            ))}
-          </div>
+          <CollapsibleSection title="Monthly P&L" icon="📋" accentColor={T.accent} defaultOpen={false} badge={(rem>=0?"+":"")+fmt(rem)}>
+            <div>
+              {[
+                {label:"Net Salary /mo",        val:netSalary,    color:T.green,   dim:false},
+                {label:"Bonus /mo (avg)",        val:bonus,        color:inclBonus?T.amber:T.muted, dim:!inclBonus},
+                {label:"Other Income",           val:extra,        color:extra>0?T.purple:T.muted,  dim:extra===0},
+                {label:"Fixed Expenses",         val:-fixed,       color:T.red,     dim:false},
+                {label:"Variable Expenses",      val:-variable,    color:T.red,     dim:false},
+                {label:"Savings & Investments",  val:-savings,     color:T.blue,    dim:false},
+                {label:"Monthly Surplus",        val:rem,          color:rem>=0?T.green:T.red, bold:true},
+              ].map((r,i)=>(
+                <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 18px",borderBottom:i<6?"1px solid "+T.border:"none",background:r.bold?T.surface:"transparent",opacity:r.dim?0.38:1}}>
+                  <span style={{fontSize:r.bold?12:11,color:r.bold?T.text:T.muted,fontWeight:r.bold?700:400,textTransform:r.bold?"uppercase":"none",letterSpacing:r.bold?1.2:0}}>{r.label}</span>
+                  <span style={{fontSize:r.bold?17:13,color:r.color,fontWeight:r.bold?700:500,fontFamily:"monospace"}}>{r.val>=0?fmt(r.val):"-"+fmt(Math.abs(r.val))}</span>
+                </div>
+              ))}
+            </div>
+          </CollapsibleSection>
 
           {/* Dynamic Overview Insights */}
           {income>0&&(
-            <div style={{background:T.card,border:"1px solid "+T.border,borderRadius:14,padding:"18px 20px",marginBottom:14}}>
-              <Lbl color={T.purple}>💡 Your Financial Insights — Updated Live</Lbl>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:10}}>
+            <CollapsibleSection title="Financial Insights" icon="💡" accentColor={T.purple} defaultOpen={true}>
+            <div style={{padding:"14px 18px 18px"}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                 {[
                   rem<0?{icon:"🔴",color:T.red,text:"Your spending exceeds income by "+fmt(Math.abs(rem))+"/month. Identify your largest non-essential expense first — even cutting half of the shortfall changes the picture."}
                   :rem<income*0.1?{icon:"⚠️",color:T.amber,text:"Your "+fmt(rem)+" surplus is thin at "+pct(income>0?(rem/income)*100:0)+" of income. One unexpected cost could erase it. Cutting "+fmt(Math.round(expenses*0.05))+" in expenses would make a real difference."}
@@ -2548,9 +3050,9 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
                   :housing>30?{icon:"🏠",color:T.amber,text:"Housing at "+pct(housing)+" is slightly above the 30% benchmark. It limits flexibility — worth watching as other expenses fluctuate."}
                   :{icon:"🏠",color:T.green,text:"Housing at "+pct(housing)+" is well within the 30% benchmark. This flexibility is valuable — consider whether any headroom could go into wealth-building."},
 
-                  runway.months<3?{icon:"⚠️",color:T.red,text:"Only "+runway.months.toFixed(1)+" months cash runway. Before investing more, build this to 3 months ("+fmt(expenses*3)+"). Security is the foundation for everything else."}
-                  :runway.months<6?{icon:"📅",color:T.amber,text:runway.months.toFixed(1)+" months runway — still building. "+fmt(runway.target-usdBalance)+" more reaches the 6-month target most advisors recommend."}
-                  :{icon:"🛡️",color:T.green,text:runway.months.toFixed(1)+" months runway means you're secure against short-term shocks. This lets you invest long-term without fear of being forced to sell."},
+                  totalAssets>0
+                    ?{icon:"💼",color:T.purple,text:"Your estimated net worth of "+fmtK(totalAssets+openingBalance)+" ("+fmtK(totalAssets)+" assets + "+fmt(openingBalance)+" liquid) is your real wealth position. Keep growing both sides — assets for long-term growth, liquid for resilience."}
+                    :{icon:"💡",color:T.blue,text:"Add your assets (property, investments, pension) in the Assets tab to see your complete net worth picture. Cash and savings alone understate your financial position."},
                 ].map((ins,i)=>(
                   <div key={i} style={{background:ins.color+"0d",border:"1px solid "+ins.color+"33",borderRadius:10,padding:"12px 14px",display:"flex",gap:10,alignItems:"flex-start"}}>
                     <span style={{fontSize:16,flexShrink:0}}>{ins.icon}</span>
@@ -2559,8 +3061,15 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
                 ))}
               </div>
             </div>
+            </CollapsibleSection>
           )}
         </>)}
+
+        {/* ══ ASSETS ══ */}
+        {tab==="assets"&&(
+          <AssetsTab assets={assets} setAssets={setAssets} fmt={fmt} fmtK={fmtK}
+            targetNetWorth={targetNetWorth} weightedReturn={weightedAssetReturn} />
+        )}
 
         {/* ══ CASHFLOW ══ */}
         {tab==="cashflow"&&(
@@ -2576,7 +3085,42 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
             <StatCard label="Bonus /mo (avg)"  value={inclBonus?fmt(netBonus):"Excluded"} color={inclBonus?T.amber:T.muted} sub={cfg.symbol+(annualBonus/1000).toFixed(0)+"k gross"} />
             <StatCard label="Total Net Income" value={fmt(income)} color={T.text} sub="All active sources" />
           </div>
-          <IncomeTable items={incomeItems} setCustomIncome={setCustomIncome} inclBonus={inclBonus} setInclBonus={setInclBonus} totalIncome={income} fmt={fmt} />
+          <CollapsibleSection title="Income Sources" icon="💰" accentColor={T.green} defaultOpen={true}>
+            <IncomeTable items={incomeItems} setCustomIncome={setCustomIncome} inclBonus={inclBonus} setInclBonus={setInclBonus} totalIncome={income} fmt={fmt} />
+          </CollapsibleSection>
+          {income>0&&(
+            <CollapsibleSection title="Income Insights" icon="💡" accentColor={T.purple} defaultOpen={true}>
+              <div style={{padding:"14px 18px 18px"}}>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                  {[
+                    // Income concentration risk
+                    (()=>{
+                      const salaryPct=income>0?(netSalary/income)*100:0;
+                      return salaryPct>90
+                        ?{icon:"⚠️",color:T.amber,text:`Your income is ${pct(salaryPct)} salary-dependent — a single point of failure. Adding even one small income stream (freelance, dividends, rental) would reduce that concentration significantly.`}
+                        :{icon:"✅",color:T.green,text:`Good income diversification: salary is ${pct(salaryPct)} of total. Multiple income sources create resilience against disruption to any single stream.`};
+                    })(),
+                    // Bonus impact
+                    inclBonus&&netBonus>0
+                      ?{icon:"🎁",color:T.amber,text:`Your ${fmt(netBonus)}/mo bonus adds ${fmt(netBonus*12)} annually — ${pct(income>0?(netBonus/income)*100:0)} of total income. Running your budget without it ensures you're not dependent on variable income.`}
+                      :{icon:"💡",color:T.muted,text:`Toggle bonus income on in the sliders above to model your full earnings potential. This lets you compare conservative (base only) vs optimistic (with bonus) financial scenarios.`},
+                    // Extra income
+                    extra>0
+                      ?{icon:"📈",color:T.green,text:`${fmt(extra)}/mo from other income sources is working hard for you. Over 12 months that's ${fmt(extra*12)} — and over 10 years invested at 7%, ${fmtK(fv(extra,0.07,10))}.`}
+                      :{icon:"💡",color:T.blue,text:`The Income tab supports rental, dividend, freelance, and other sources. Adding additional income streams here allows the dashboard to model your complete financial picture accurately.`},
+                    // Tax efficiency
+                    {icon:"💰",color:Number(effectiveRate)<25?T.green:Number(effectiveRate)<35?T.amber:T.red,
+                     text:`Your effective tax rate is ${effectiveRate}%. ${Number(effectiveRate)>35?"At this rate, tax-advantaged accounts like ISAs or pension contributions are especially valuable — each pound contributed reduces taxable income.":Number(effectiveRate)>25?"Consider whether any income could be shifted into lower-taxed structures (pensions, ISAs, dividends if self-employed).":"Good tax position. Maintaining this through tax-efficient saving will protect more of every additional pound you earn."}`},
+                  ].map((ins,i)=>(
+                    <div key={i} style={{background:ins.color+"0d",border:"1px solid "+ins.color+"33",borderRadius:10,padding:"12px 14px",display:"flex",gap:10,alignItems:"flex-start"}}>
+                      <span style={{fontSize:16,flexShrink:0}}>{ins.icon}</span>
+                      <p style={{margin:0,fontSize:11,color:T.muted,lineHeight:1.7}}>{ins.text}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </CollapsibleSection>
+          )}
         </>)}
 
         {/* ══ EXPENSES ══ */}
@@ -2586,12 +3130,16 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
             <StatCard label="Variable Expenses" value={fmt(variable)} color={T.red+"88"} sub={pct(income>0?(variable/income)*100:0)+" of income"} />
             <StatCard label="Total Outgoings"   value={fmt(expenses)} color={T.red}      sub={pct(income>0?(expenses/income)*100:0)+" of income"} />
           </div>
-          <EditableTable title="Fixed Expenses"    icon="🔒" items={fixedItems} setItems={setFixedItems} accentColor={T.red}  sliderMax={8000} />
-          <EditableTable title="Variable Expenses" icon="🔄" items={varItems}   setItems={setVarItems}   accentColor={T.blue} sliderMax={3000} />
+          <CollapsibleSection title="Fixed Expenses" icon="🔒" accentColor={T.red} badge={fmt(fixed)}>
+            <EditableTable title="Fixed Expenses" icon="🔒" items={fixedItems} setItems={setFixedItems} accentColor={T.red} sliderMax={8000} />
+          </CollapsibleSection>
+          <CollapsibleSection title="Variable Expenses" icon="🔄" accentColor={T.blue} badge={fmt(variable)}>
+            <EditableTable title="Variable Expenses" icon="🔄" items={varItems} setItems={setVarItems} accentColor={T.blue} sliderMax={3000} />
+          </CollapsibleSection>
           {income>0&&(
-            <div style={{background:T.card,border:"1px solid "+T.border,borderRadius:14,padding:"18px 20px",marginBottom:14}}>
-              <Lbl color={T.purple}>💡 Expense Insights</Lbl>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:10}}>
+            <CollapsibleSection title="Expense Insights" icon="💡" accentColor={T.purple} defaultOpen={true}>
+            <div style={{padding:"14px 18px 18px"}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                 {[
                   {icon:fixed/income>0.5?"🔴":fixed/income>0.35?"⚠️":"✅",color:fixed/income>0.5?T.red:fixed/income>0.35?T.amber:T.green,
                    text:"Fixed costs are "+pct(income>0?(fixed/income)*100:0)+" of income. These are the hardest to cut — but each reduction saves permanently. Your largest fixed item alone is "+pct(income>0?(Math.max(...fixedItems.filter(i=>!i.excluded).map(i=>i.amount),0)/income)*100:0)+"."},
@@ -2609,6 +3157,7 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
                 ))}
               </div>
             </div>
+            </CollapsibleSection>
           )}
         </>)}
 
@@ -2633,8 +3182,11 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
             // For each time point: compute each bucket's future value using simple savings accumulation
             // (not compound interest — just months × amount; compound is in Projections tab)
             const chartData = SAV_POINTS.map(mo=>{
-              const bucketVals = activeBuckets.map(b=>b.amount*mo);
-              return { mo, buckets:bucketVals, total:savings*mo };
+              const bucketVals = activeBuckets.map(b=>{
+                const r = (Number(b.annualReturn)||7)/100;
+                return Math.round(fv(b.amount, r, mo/12));
+              });
+              return { mo, buckets:bucketVals, total:bucketVals.reduce((s,v)=>s+v,0) };
             });
             const yMax2    = Math.max(...chartData.map(d=>d.total),1);
             const yTicks2  = niceYTicks(yMax2, 5);
@@ -2667,14 +3219,14 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
             );
           })()}
           {income>0&&(
-            <div style={{background:T.card,border:"1px solid "+T.border,borderRadius:14,padding:"18px 20px",marginBottom:14}}>
-              <Lbl color={T.purple}>💡 Savings Insights</Lbl>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:10}}>
+            <CollapsibleSection title="Savings Insights" icon="💡" accentColor={T.purple} defaultOpen={true}>
+            <div style={{padding:"14px 18px 18px"}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                 {[
                   {icon:sRate>=30?"🚀":sRate>=20?"📈":"⚠️",color:sRate>=30?T.green:sRate>=20?T.amber:T.red,
-                   text:pct(sRate)+" savings rate. The 25–30% range is considered strong for long-term wealth building. You're saving "+fmt(savings)+"/month — over 10 years at 7%, that becomes "+fmtK(fv(savings,0.07,10))+"."},
+                   text:pct(sRate)+" savings rate. The 25–30% range is considered strong for long-term wealth building. You're saving "+fmt(savings)+"/month — over 10 years at your "+pct(weightedReturn)+" return, that becomes "+fmtK(fv(savings,weightedReturn/100,10))+"."},
                   {icon:"🎯",color:T.blue,
-                   text:"To reach $1.9M from zero: saving "+fmt(savings)+"/month at 7% takes approximately "+(savings>0?Math.ceil(Math.log(1+0.07*(1900000/(savings*12)))/Math.log(1.07)):"-")+" years. Increasing monthly savings by "+fmt(200)+" shortens that timeline by years."},
+                   text:"To reach "+fmtK(targetNetWorth)+" from zero: saving "+fmt(savings)+"/month at "+pct(weightedReturn)+" takes approximately "+(savings>0?Math.ceil(Math.log(1+(weightedReturn/100)*(targetNetWorth/(savings*12)))/Math.log(1+weightedReturn/100)):"-")+" years. Each extra "+fmt(200)+"/month shortens that significantly."},
                   {icon:"🛡️",color:T.amber,
                    text:"Is your Emergency Fund bucket fully funded? The target is "+fmt(expenses*6)+" (6 months of expenses). Without it, any financial shock forces you to sell investments at potentially the worst time."},
                   {icon:"📅",color:T.green,
@@ -2687,9 +3239,38 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
                 ))}
               </div>
             </div>
+            </CollapsibleSection>
           )}
-          <div style={{background:T.card,border:"1px solid "+T.border,borderRadius:12,padding:"16px 18px",marginBottom:14}}>
-            <Lbl color={T.green}>Allocation Breakdown</Lbl>
+          <div style={{background:T.card,border:"1px solid "+T.border,borderRadius:14,padding:"18px 20px",marginBottom:14}}>
+            <Lbl color={T.blue}>📊 Global Index Average Returns — Reference</Lbl>
+            <div style={{fontSize:11,color:T.muted,marginBottom:12}}>Historical nominal averages. Use as a benchmark when setting each bucket's return rate.</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              {[
+                {name:"S&P 500 (US Large Cap)",        ret:10.7, note:"~7.5% real after inflation. Strongest long-run record.",   color:T.blue},
+                {name:"MSCI World (Global Developed)", ret:9.2,  note:"Diversified across 23 developed markets.",                 color:T.green},
+                {name:"FTSE 100 (UK Large Cap)",       ret:7.8,  note:"Dividend-heavy; lower growth, higher yield.",              color:T.purple},
+                {name:"MSCI Emerging Markets",         ret:6.4,  note:"Higher volatility — China, India, Brazil.",               color:T.amber},
+                {name:"Bloomberg Agg (Global Bonds)",  ret:4.1,  note:"Lower risk; capital preservation focus.",                 color:T.muted},
+              ].map(idx=>(
+                <div key={idx.name} style={{background:T.surface,border:"1px solid "+idx.color+"33",borderRadius:10,padding:"12px 14px"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
+                    <span style={{fontSize:11,color:T.text,fontFamily:"monospace",fontWeight:700}}>{idx.name}</span>
+                    <span style={{fontSize:15,color:idx.color,fontFamily:"monospace",fontWeight:700}}>{idx.ret}%</span>
+                  </div>
+                  <div style={{height:4,background:T.faint,borderRadius:2,marginBottom:6}}>
+                    <div style={{height:"100%",width:(idx.ret/12*100)+"%",background:idx.color+"88",borderRadius:2}} />
+                  </div>
+                  <div style={{fontSize:10,color:T.muted,lineHeight:1.6}}>{idx.note}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{marginTop:10,fontSize:10,color:T.muted,lineHeight:1.7}}>
+              <span style={{color:T.amber,fontWeight:700}}>⚠ </span>Past returns don't guarantee future results. Edit each bucket's % rate to customise your projection.
+            </div>
+          </div>
+
+          <CollapsibleSection title="Allocation Breakdown" icon="🥧" accentColor={T.green} defaultOpen={false}>
+          <div style={{padding:"16px 18px"}}>
             <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:10}}>
               {savBuckets.filter(b=>!b.excluded).map((b,idx)=>{
                 const c=b.color||SAV_COLORS[idx%SAV_COLORS.length];
@@ -2705,41 +3286,55 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
               })}
             </div>
           </div>
+          </CollapsibleSection>
         </>)}
 
         {/* ══ PROJECTIONS ══ */}
         {tab==="projections"&&(<>
-          <div style={{display:"flex",gap:4,marginBottom:14,background:T.card,padding:4,borderRadius:10,border:"1px solid "+T.border,width:"fit-content",flexWrap:"wrap"}}>
-            {INTERVAL_MODES.map(m=>(
-              <button key={m.id} onClick={()=>setProjInterval(m.id)}
-                style={{padding:"6px 12px",borderRadius:7,border:"none",background:projInterval===m.id?T.accent:"transparent",color:projInterval===m.id?T.bg:T.muted,cursor:"pointer",fontSize:10,fontFamily:"monospace",letterSpacing:1.5,textTransform:"uppercase",fontWeight:projInterval===m.id?700:400,transition:"all 0.15s",whiteSpace:"nowrap"}}>
-                {m.label}
-              </button>
-            ))}
+          <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap",alignItems:"center",justifyContent:"space-between"}}>
+            <div style={{display:"flex",gap:4,background:T.card,padding:4,borderRadius:10,border:"1px solid "+T.border,flexWrap:"wrap"}}>
+              {INTERVAL_MODES.map(m=>(
+                <button key={m.id} onClick={()=>setProjInterval(m.id)}
+                  style={{padding:"6px 12px",borderRadius:7,border:"none",background:projInterval===m.id?T.accent:"transparent",color:projInterval===m.id?T.bg:T.muted,cursor:"pointer",fontSize:10,fontFamily:"monospace",letterSpacing:1.5,textTransform:"uppercase",fontWeight:projInterval===m.id?700:400,transition:"all 0.15s",whiteSpace:"nowrap"}}>
+                  {m.label}
+                </button>
+              ))}
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,background:T.card,border:"1px solid "+T.amber+"44",borderRadius:10,padding:"8px 14px"}}>
+                <span style={{fontSize:11,color:T.muted,fontFamily:"monospace"}}>🎯 Wealth target:</span>
+                <InlineEdit value={targetNetWorth} type="number" onCommit={v=>setTargetNetWorth(Math.max(0,v))}
+                  style={{fontSize:14,color:T.amber,fontFamily:"monospace",fontWeight:700,minWidth:80,textAlign:"right"}} />
+              </div>
+              <div style={{background:T.card,border:"1px solid "+T.blue+"33",borderRadius:10,padding:"8px 14px"}}>
+                <span style={{fontSize:11,color:T.muted,fontFamily:"monospace"}}>Weighted return: </span>
+                <span style={{fontSize:13,color:T.blue,fontFamily:"monospace",fontWeight:700}}>{pct(weightedReturn)}</span>
+              </div>
+            </div>
           </div>
-          <ProjChart monthlySavings={savings} netBonus={netBonus} includeBonus={inclBonus} intervalMode={projInterval} fmtK={fmtK} />
+          <ProjChart monthlySavings={savings} netBonus={netBonus} includeBonus={inclBonus} intervalMode={projInterval} fmtK={fmtK} targetNetWorth={targetNetWorth} weightedReturn={weightedReturn} initialAssets={totalAssets} />
           <div style={cardS}>
             <div style={{padding:"12px 18px",background:T.surface,borderBottom:"1px solid "+T.border,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
-              <Lbl color={T.green}>Detailed Projections — {fmt(savings)}/mo @ 7% return</Lbl>
+              <Lbl color={T.green}>Detailed Projections — {fmt(savings)}/mo @ {pct(weightedReturn)} return</Lbl>
               <Pill label={INTERVAL_MODES.find(m=>m.id===projInterval)?.label+" view"||""} color={T.green} />
             </div>
             <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
               <table style={{width:"100%",minWidth:500,borderCollapse:"collapse",fontSize:11,fontFamily:"monospace"}}>
                 <thead>
-                  <tr>{["Period","Investments","Bonus","Car","Total","vs $1.9M"].map(h=>(
-                    <th key={h} style={{padding:"10px 12px",textAlign:"right",color:T.muted,fontSize:10,letterSpacing:1.2,textTransform:"uppercase",borderBottom:"1px solid "+T.border,whiteSpace:"nowrap",fontWeight:600}}>{h}</th>
+                  <tr>{["Period","Savings","Bonus","Assets","Total","vs Target"].map(h=>(
+                    <th key={h} style={{padding:"10px 12px",textAlign:h==="Period"?"left":"right",color:T.muted,fontSize:10,letterSpacing:1.2,textTransform:"uppercase",borderBottom:"1px solid "+T.border,whiteSpace:"nowrap",fontWeight:600}}>{h}</th>
                   ))}</tr>
                 </thead>
                 <tbody>
                   {(INTERVAL_MODES.find(m=>m.id===projInterval)||INTERVAL_MODES[2]).steps.map((y,i)=>{
-                    const row=calcProjRow(y,savings,netBonus,inclBonus);
-                    const gap=row.total-TARGET_USD,hit=row.total>=TARGET_USD;
+                    const row=calcProjRow(y,savings,netBonus,inclBonus,weightedReturn,totalAssets);
+                    const gap=row.total-targetNetWorth,hit=row.total>=targetNetWorth;
                     return (
                       <tr key={y} style={{background:i%2===0?T.surface:"transparent",borderBottom:"1px solid "+T.border}}>
                         <td style={{padding:"10px 12px",color:hit?T.amber:T.text,fontWeight:hit?700:400,whiteSpace:"nowrap"}}>{INTERVAL_MODES.find(m=>m.id===projInterval)?.fmt(y)||y+"yr"}{hit?" ✓":""}</td>
                         <td style={{padding:"10px 12px",textAlign:"right",color:T.blue}}>{fmtK(row.inv)}</td>
                         <td style={{padding:"10px 12px",textAlign:"right",color:inclBonus?T.amber:T.muted}}>{inclBonus?fmtK(row.bon):"—"}</td>
-                        <td style={{padding:"10px 12px",textAlign:"right",color:T.muted}}>{fmtK(row.car)}</td>
+                        <td style={{padding:"10px 12px",textAlign:"right",color:T.purple}}>{row.existingAssets>0?fmtK(row.existingAssets):fmtK(row.car)}</td>
                         <td style={{padding:"10px 12px",textAlign:"right",color:hit?T.amber:T.green,fontWeight:700}}>{fmtK(row.total)}</td>
                         <td style={{padding:"10px 12px",textAlign:"right",color:hit?T.green:T.red,fontWeight:600}}>{gap>=0?"+":""}{fmtK(gap)}</td>
                       </tr>
@@ -2749,19 +3344,54 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
               </table>
             </div>
           </div>
+          {/* ── PROJECTIONS INSIGHTS ── */}
+          {(()=>{
+            const activeMode=INTERVAL_MODES.find(m=>m.id===projInterval)||INTERVAL_MODES[2];
+            const firstHit=activeMode.steps.find(y=>calcProjRow(y,savings,netBonus,inclBonus,weightedReturn,totalAssets).total>=targetNetWorth);
+            const row30=calcProjRow(30,savings,netBonus,inclBonus,weightedReturn,totalAssets);
+            const row10=calcProjRow(10,savings,netBonus,inclBonus,weightedReturn,totalAssets);
+            const assetBoost=Math.round(totalAssets*Math.pow(1+weightedAssetReturn/100,10));
+            const combinedNW10=row10.total+assetBoost;
+            const ins=[
+              firstHit
+                ?{icon:"🎯",color:T.green,text:`At your current savings rate of ${fmt(savings)}/mo at ${pct(weightedReturn)}, you're projected to reach your ${fmtK(targetNetWorth)} target in approximately ${firstHit} ${firstHit===1?"year":"years"}. Keep this pace.`}
+                :{icon:"📈",color:T.amber,text:`Your ${fmt(savings)}/mo at ${pct(weightedReturn)} doesn't reach your ${fmtK(targetNetWorth)} target within the modelled window. Increasing monthly savings by ${fmt(Math.round(savings*0.2))} could make a significant difference.`},
+              {icon:"💡",color:T.blue,text:`In 10 years, your savings contributions alone project to ${fmtK(row10.total)}. Combined with your current asset portfolio growing at ${pct(weightedAssetReturn)}, your estimated total net worth could reach ${fmtK(combinedNW10)}.`},
+              savings>0?{icon:"⚡",color:T.purple,text:`Compounding impact: at ${pct(weightedReturn)}, your ${fmt(savings)}/mo saved today is worth ${fmtK(fv(savings,weightedReturn/100,30))} at 30 years — compared to just ${fmtK(savings*12*30)} without growth. Time is your biggest lever.`}:{icon:"⚡",color:T.muted,text:`Start saving any amount consistently — even ${fmt(200)}/mo at 7% becomes ${fmtK(fv(200,0.07,30))} over 30 years. The amount matters less than starting.`},
+              inclBonus&&netBonus>0
+                ?{icon:"🎁",color:T.amber,text:`Including your ${fmt(netBonus)}/mo bonus contribution adds ${fmtK(row30.bon)} to your 30-year projection — a ${pct(row30.bon/Math.max(row30.inv,1)*100)} uplift on top of regular savings.`}
+                :{icon:"🎁",color:T.muted,text:`If you include an annual bonus, you can model its compounding impact in the Projections chart. Even modest bonus contributions compound significantly over long time horizons.`},
+            ];
+            return (
+              <CollapsibleSection title="Projection Insights" icon="💡" accentColor={T.purple} defaultOpen={true}>
+                <div style={{padding:"14px 18px 18px"}}>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                    {ins.map((i,idx)=>(
+                      <div key={idx} style={{background:i.color+"0d",border:"1px solid "+i.color+"33",borderRadius:10,padding:"12px 14px",display:"flex",gap:10,alignItems:"flex-start"}}>
+                        <span style={{fontSize:16,flexShrink:0}}>{i.icon}</span>
+                        <p style={{margin:0,fontSize:11,color:T.muted,lineHeight:1.7}}>{i.text}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </CollapsibleSection>
+            );
+          })()}
         </>)}
 
         {/* ══ ANALYSIS ══ */}
         {tab==="analysis"&&(<>
-          <HealthScore savingsRate={sRate} housingPct={housing} totalExpenses={expenses} netIncome={income} />
-          <div style={{background:T.card,border:"1px solid "+runway.color+"44",borderRadius:12,padding:"16px 18px",marginBottom:14}}>
-            <Lbl color={runway.color}>Cash Runway Analysis</Lbl>
+          <CollapsibleSection title="Financial Health Score" icon="🏥" accentColor={T.purple} defaultOpen={true}>
+            <div style={{padding:"0 0 4px"}}><HealthScore savingsRate={sRate} housingPct={housing} totalExpenses={expenses} netIncome={income} /></div>
+          </CollapsibleSection>
+          <CollapsibleSection title="Cash Runway Analysis" icon="🛡️" accentColor={runway.color} defaultOpen={false}>
+          <div style={{padding:"16px 18px"}}>
             <div className="fc-analysis" style={{marginTop:12}}>
               {[
-                {label:"3-month floor",   score:runway.months>=3?"✓ Met":"⚠ Below",            color:runway.months>=3?T.green:T.red,    detail:runway.months>=3?"Above minimum. Current: "+runway.months.toFixed(1)+" months.":"Only "+runway.months.toFixed(1)+"mo. Need "+fmt(expenses*3-usdBalance)+" more for floor."},
-                {label:"6-month target",  score:runway.months>=6?"✓ Funded":runway.months>=3?"~ In Progress":"⚠ Priority",color:runway.color,detail:runway.months>=6?"Fully funded. "+fmt(usdBalance-runway.target)+" above target.":fmt(runway.target-usdBalance)+" shortfall. "+(runway.toTarget!==null?"~"+runway.toTarget.toFixed(1)+" months to target.":"Increase surplus.")},
+                {label:"3-month floor",   score:runway.months>=3?"✓ Met":"⚠ Below",            color:runway.months>=3?T.green:T.red,    detail:runway.months>=3?"Above minimum. Current: "+runway.months.toFixed(1)+" months.":"Only "+runway.months.toFixed(1)+"mo. Need "+fmt(expenses*3-openingBalance)+" more for floor."},
+                {label:"6-month target",  score:runway.months>=6?"✓ Funded":runway.months>=3?"~ In Progress":"⚠ Priority",color:runway.color,detail:runway.months>=6?"Fully funded. "+fmt(openingBalance-runway.target)+" above target.":fmt(runway.target-openingBalance)+" shortfall. "+(runway.toTarget!==null?"~"+runway.toTarget.toFixed(1)+" months to target.":"Increase surplus.")},
                 {label:"Burn sensitivity",score:expenses<4000?"✓ Lean":expenses<7000?"~ Moderate":"⚠ High Burn",        color:expenses<4000?T.green:expenses<7000?T.amber:T.red,  detail:"Each "+cfg.symbol+"1k cut = "+(1000/Math.max(1,expenses)).toFixed(2)+" more months runway."},
-                {label:"Balance vs income",score:usdBalance>=income*2?"✓ Strong":usdBalance>=income?"~ Adequate":"⚠ Low",color:usdBalance>=income*2?T.green:usdBalance>=income?T.amber:T.red,detail:fmt(usdBalance)+" = "+(income>0?(usdBalance/income).toFixed(1):"—")+"× monthly income."},
+                {label:"Balance vs income",score:openingBalance>=income*2?"✓ Strong":openingBalance>=income?"~ Adequate":"⚠ Low",color:openingBalance>=income*2?T.green:openingBalance>=income?T.amber:T.red,detail:fmt(openingBalance)+" = "+(income>0?(openingBalance/income).toFixed(1):"—")+"× monthly income."},
               ].map(item=>(
                 <div key={item.label} style={{background:T.surface,border:"1px solid "+item.color+"33",borderRadius:10,padding:"12px 14px"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:8,flexWrap:"wrap"}}>
@@ -2773,26 +3403,26 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
               ))}
             </div>
           </div>
-          <div style={cardS}>
-            <div style={{padding:"12px 18px",background:T.surface,borderBottom:"1px solid "+T.border}}>
-              <Lbl color={T.purple}>Objective Assessment</Lbl>
-            </div>
-            {[
-              {area:"Housing",          color:rentAmt>income*.35?T.red:rentAmt>income*.28?T.amber:T.green, verdict:rentAmt>income*.35?"⚠ Elevated":rentAmt>income*.28?"~ Borderline":"✓ Reasonable", detail:"At "+pct(housing)+" of net income. "+cfg.taxYearNote},
-              {area:"Savings Rate",     color:sRate>=30?T.green:sRate>=20?T.amber:T.red,                   verdict:sRate>=30?"✓ Strong":sRate>=20?"~ Moderate":"⚠ Insufficient",                   detail:pct(sRate)+" savings rate. Target 30%+ for aggressive wealth building."},
-              {area:"Expense Control",  color:expenses<income*.65?T.green:expenses<income*.80?T.amber:T.red,verdict:expenses<income*.65?"✓ Controlled":expenses<income*.80?"~ Moderate":"⚠ High",   detail:"Total "+fmt(expenses)+"/mo = "+pct(income>0?(expenses/income)*100:0)+" of net income."},
-              {area:"Tax Efficiency",   color:Number(effectiveRate)<25?T.green:Number(effectiveRate)<35?T.amber:T.red,verdict:Number(effectiveRate)<25?"✓ Efficient":Number(effectiveRate)<35?"~ Average":"⚠ High",detail:effectiveRate+"% effective rate. "+cfg.rentalNotes},
-              {area:"Wealth Trajectory",color:T.green,verdict:"✓ On Track",detail:"At "+fmt(savings)+"/mo compounding at 7%, you are on a path toward the $1.9M target. Review Projections tab for your timeline."},
-            ].map((r,i)=>(
-              <div key={i} style={{padding:"14px 18px",borderBottom:i<4?"1px solid "+T.border:"none"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5,gap:8,flexWrap:"wrap"}}>
-                  <span style={{fontSize:12,color:T.text,fontWeight:700}}>{r.area}</span>
-                  <Pill label={r.verdict} color={r.color} />
+          </CollapsibleSection>
+          <CollapsibleSection title="Objective Assessment" icon="📋" accentColor={T.purple} defaultOpen={true}>
+            <div>
+              {[
+                {area:"Housing",          color:rentAmt>income*.35?T.red:rentAmt>income*.28?T.amber:T.green, verdict:rentAmt>income*.35?"⚠ Elevated":rentAmt>income*.28?"~ Borderline":"✓ Reasonable", detail:"At "+pct(housing)+" of net income. "+cfg.taxYearNote},
+                {area:"Savings Rate",     color:sRate>=30?T.green:sRate>=20?T.amber:T.red,                   verdict:sRate>=30?"✓ Strong":sRate>=20?"~ Moderate":"⚠ Insufficient",                   detail:pct(sRate)+" savings rate. Target 30%+ for aggressive wealth building."},
+                {area:"Expense Control",  color:expenses<income*.65?T.green:expenses<income*.80?T.amber:T.red,verdict:expenses<income*.65?"✓ Controlled":expenses<income*.80?"~ Moderate":"⚠ High",   detail:"Total "+fmt(expenses)+"/mo = "+pct(income>0?(expenses/income)*100:0)+" of net income."},
+                {area:"Tax Efficiency",   color:Number(effectiveRate)<25?T.green:Number(effectiveRate)<35?T.amber:T.red,verdict:Number(effectiveRate)<25?"✓ Efficient":Number(effectiveRate)<35?"~ Average":"⚠ High",detail:effectiveRate+"% effective rate. "+cfg.rentalNotes},
+                {area:"Wealth Trajectory",color:savings>0||totalAssets>0?T.green:T.muted,verdict:savings>0||totalAssets>0?"✓ Building":"⚠ No Savings",detail:"At "+fmt(savings)+"/mo at "+pct(weightedReturn)+", plus "+fmtK(totalAssets)+" in assets, your combined net worth trajectory points toward "+fmtK(targetNetWorth)+". Open Projections to model your timeline."},
+              ].map((r,i)=>(
+                <div key={i} style={{padding:"14px 18px",borderBottom:i<4?"1px solid "+T.border:"none"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5,gap:8,flexWrap:"wrap"}}>
+                    <span style={{fontSize:12,color:T.text,fontWeight:700}}>{r.area}</span>
+                    <Pill label={r.verdict} color={r.color} />
+                  </div>
+                  <p style={{margin:0,fontSize:11,color:T.muted,lineHeight:1.7}}>{r.detail}</p>
                 </div>
-                <p style={{margin:0,fontSize:11,color:T.muted,lineHeight:1.7}}>{r.detail}</p>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          </CollapsibleSection>
         </>)}
 
         <footer style={{textAlign:"center",marginTop:28,fontSize:10,color:T.border,paddingBottom:20}}>
@@ -2821,13 +3451,19 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
           effectiveRate, totalIncome:Math.round(income),
           totalExpenses:Math.round(expenses), totalSavings:Math.round(savings),
           savingsRate:income>0?Math.round(savings/income*100):0,
-          usdBalance, emergencyFundTarget:Math.round(expenses*6),
-          cashRunwayMonths:expenses>0?Math.round(usdBalance/expenses):0,
+          openingBalance, emergencyFundTarget:Math.round(expenses*6),
+          cashRunwayMonths:expenses>0?Math.round(openingBalance/expenses):0,
           housingPct:income>0?Math.round((fixedItems.find(f=>f.name?.toLowerCase().includes("rent")||f.name?.toLowerCase().includes("mortgage"))?.amount||0)/income*100):0,
-          netWorthProjection30yr:Math.round(usdBalance*Math.pow(1.07,30)+savings*12*((Math.pow(1.07,30)-1)/0.07)),
+          totalAssets:Math.round(totalAssets),
+          weightedAssetReturn:Math.round(weightedAssetReturn*10)/10,
+          netWorthEstimate:Math.round(totalAssets+openingBalance),
+          netWorthProjection30yr:Math.round((totalAssets+openingBalance)*Math.pow(1+weightedAssetReturn/100,30)+savings*12*((Math.pow(1+weightedAssetReturn/100,30)-1)/(weightedAssetReturn/100||0.07))),
+          assets:(assets||[]).filter(a=>!a.excluded).map(a=>({name:a.name,category:a.category,value:a.value,annualReturn:a.annualReturn})),
           fixedExpenses:fixedItems.map(i=>({name:i.name,amount:i.amount})),
           variableExpenses:varItems.map(i=>({name:i.name,amount:i.amount})),
-          savingsBuckets:savBuckets.map(i=>({name:i.name,amount:i.amount})),
+          savingsBuckets:savBuckets.map(i=>({name:i.name,amount:i.amount,annualReturn:i.annualReturn})),
+          cashflowOneOffs:cashflow.months.filter(m=>(m.oneOffs||[]).length>0).map(m=>({month:m.label,items:(m.oneOffs||[]).map(o=>({label:o.label,amount:o.amount}))})),
+          monthlySurplus:Math.round(rem),
         },null,2)}
       />}
     </div>
@@ -2959,17 +3595,17 @@ const GLOSSARY_TERMS = [
     regional:{}},
 
   // ── Cashflow terms ────────────────────────────────────────────────────────
-  { term:"One-Off Expenses", cat:"Cashflow",
-    def:"Non-recurring costs in a given month — holiday, car service, new appliance, medical bill, moving costs. They don't appear every month but can significantly dent your cash position. Adding them to specific months in FinCommand gives you an accurate forecast.",
+  { term:"One-off Cash Movements", cat:"Cashflow",
+    def:"Non-recurring costs or income in a given month — holiday, car service, new appliance, medical bill, moving costs. They don't appear every month but can significantly dent your cash position. Adding them to specific months in FinCommand gives you an accurate forecast.",
     regional:{}},
   { term:"Closing Balance", cat:"Cashflow",
-    def:"The projected amount of liquid cash at the end of a given month, after all income, regular expenses, savings, and one-off costs. Your cashflow is healthy when this stays positive and above 2× monthly expenses.",
+    def:"The projected amount of liquid cash at the end of a given month, after all income, regular expenses, savings, and one-off cash movements. Your cashflow is healthy when this stays positive and above 2× monthly expenses.",
     regional:{}},
   { term:"Cash Floor", cat:"Cashflow",
     def:"The lowest point your cash balance hits over the forecast period. This is the number to watch — if your cash floor goes negative, you'll need to borrow or break into savings at that moment.",
     regional:{}},
   { term:"Recurring Surplus", cat:"Cashflow",
-    def:"Your monthly net: income minus all regular expenses and savings contributions. This is the baseline amount your cash balance should grow by each month, before any one-off costs hit.",
+    def:"Your monthly net: income minus all regular expenses and savings contributions. This is the baseline amount your cash balance should grow by each month, before any one-off cash movements hit.",
     regional:{}},
 
   // ── Wealth terms ──────────────────────────────────────────────────────────
@@ -3199,16 +3835,18 @@ function AIAdvisor({ dashboardContext, themeId, onClose }) {
       "- Use £/$ symbols matching their country currency\n"+
       "- Never recommend specific investment products or funds";
 
-    // ── Route: Edge Function (production) or direct API (demo/dev) ──────────
-    const useEdge = IS_CONFIGURED;
+    // ── Route: Edge Function (if deployed) or direct Anthropic API ──────────
+    const useEdge = IS_CONFIGURED && IS_EDGE_DEPLOYED;
 
     try {
       // Get auth token to authenticate with the edge function
       let authHeader = {};
-      if(IS_CONFIGURED){
+      if(IS_CONFIGURED && IS_EDGE_DEPLOYED){
         const sb = await getSb();
-        const { data:{ session } } = await sb.auth.getSession();
-        if(session?.access_token) authHeader = { "Authorization": "Bearer " + session.access_token };
+        if(sb){
+          const { data:{ session } } = await sb.auth.getSession();
+          if(session?.access_token) authHeader = { "Authorization": "Bearer " + session.access_token };
+        }
       }
 
       const payload = {
@@ -3393,8 +4031,13 @@ export default function App() {
     try{
       const{data}=await db.loadUserData(u.id);
       if(data?.profile&&data?.dashboard){
-        // Migrate: add cashflow if missing from old saves
+        // Migrate old saves to current schema
         if(!data.dashboard.cashflow) data.dashboard.cashflow=DEFAULT_CASHFLOW();
+        if(data.dashboard.usdBalance && data.dashboard.cashflow.openingBalance===5000)
+          data.dashboard.cashflow.openingBalance=data.dashboard.usdBalance;
+        if(!data.dashboard.targetNetWorth) data.dashboard.targetNetWorth=DEFAULT_TARGET_NW;
+        if(!data.dashboard.studentLoan) data.dashboard.studentLoan={enabled:false,plan:"plan2",postgrad:false};
+        if(!data.dashboard.assets) data.dashboard.assets=DEFAULT_ASSETS();
         setProfile(data.profile);setDashData(data.dashboard);setScreen("dashboard");
       } else setScreen("onboarding");
     }catch{setScreen("onboarding");}
