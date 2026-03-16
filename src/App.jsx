@@ -45,7 +45,7 @@ function GlobalStyles() { return <style dangerouslySetInnerHTML={{ __html: GLOBA
 // STEP 1: Set this to your deployed app's domain (no https://, no trailing slash)
 //         Example: "myfinapp.com" or "app.myfinapp.com"
 //         Leave empty ("") to stay in demo mode everywhere (safe default)
-const PRODUCTION_DOMAIN = "https://fincommand.vercel.app/";
+const PRODUCTION_DOMAIN = "fincommand.vercel.app";
 
 // STEP 2: Your Supabase credentials (already set — don't change these)
 const SUPABASE_URL  = "https://cjgazhrxexjvztkzaujk.supabase.co";
