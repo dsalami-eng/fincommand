@@ -36,6 +36,10 @@ const GLOBAL_CSS = `
   }
   @keyframes fc-spin { to { transform: rotate(360deg); } }
   .fc-spin { animation: fc-spin 0.8s linear infinite; }
+  /* Hide number input spinners for cleaner UX in rate/return fields */
+  .fc-no-spin::-webkit-inner-spin-button,
+  .fc-no-spin::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+  .fc-no-spin { -moz-appearance:textfield; }
 `;
 function GlobalStyles() { return <style dangerouslySetInnerHTML={{ __html: GLOBAL_CSS }} />; }
 
@@ -304,14 +308,30 @@ const INTERVAL_MODES = [
   {id:"5y",label:"5-Year",  steps:[5,10,15,20,25,30],                       fmt:y=>y+"yr"},
 ];
 const TABS = [
-  {id:"overview",    label:"Overview"},
-  {id:"assets",      label:"Assets"},
-  {id:"income",      label:"Income"},
-  {id:"savings",     label:"Savings"},
-  {id:"expenses",    label:"Expenses"},
-  {id:"analysis",    label:"Analysis"},
-  {id:"projections", label:"Projections"},
-  {id:"cashflow",    label:"Cashflow"},
+  {id:"overview",     label:"Overview"},
+  {id:"assets",       label:"Assets"},
+  {id:"liabilities",  label:"Liabilities"},
+  {id:"income",       label:"Income"},
+  {id:"savings",      label:"Savings"},
+  {id:"expenses",     label:"Expenses"},
+  {id:"analysis",     label:"Analysis"},
+  {id:"projections",  label:"Projections"},
+  {id:"cashflow",     label:"Cashflow"},
+];
+
+const LIABILITY_CATEGORIES = [
+  {value:"mortgage",  label:"Mortgage",      emoji:"🏠"},
+  {value:"carloan",   label:"Car Loan",       emoji:"🚗"},
+  {value:"student",   label:"Student Loan",   emoji:"🎓"},
+  {value:"credit",    label:"Credit Card",    emoji:"💳"},
+  {value:"personal",  label:"Personal Loan",  emoji:"🤝"},
+  {value:"business",  label:"Business Loan",  emoji:"🏢"},
+  {value:"other",     label:"Other Debt",     emoji:"📋"},
+];
+
+const DEFAULT_LIABILITIES = () => [
+  {id:uid(), name:"Mortgage",      category:"mortgage", balance:250000, interestRate:4.5, monthlyPayment:1200, notes:"", excluded:false},
+  {id:uid(), name:"Car Finance",   category:"carloan",  balance:12000,  interestRate:6.9, monthlyPayment:280,  notes:"", excluded:false},
 ];
 
 // Asset categories
@@ -553,13 +573,24 @@ function ThemePicker({ current, onChange }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // COLLAPSIBLE SECTION — reusable expand/collapse wrapper
 // ══════════════════════════════════════════════════════════════════════════════
-function CollapsibleSection({ title, icon, children, defaultOpen=true, accentColor, badge }) {
+function CollapsibleSection({ title, icon, children, defaultOpen=true, accentColor, badge, storeKey }) {
   const T = useTheme();
-  const [open, setOpen] = useState(defaultOpen);
+  const [open, setOpen] = useState(()=>{
+    if(!storeKey) return defaultOpen;
+    try {
+      const stored = localStorage.getItem("fc_cs_"+storeKey);
+      return stored !== null ? stored === "1" : defaultOpen;
+    } catch { return defaultOpen; }
+  });
+  const toggle = () => setOpen(o=>{
+    const next = !o;
+    if(storeKey) { try { localStorage.setItem("fc_cs_"+storeKey, next?"1":"0"); } catch {} }
+    return next;
+  });
   const c = accentColor || T.accent;
   return (
     <div style={{background:T.card,border:"1px solid "+T.border,borderRadius:14,overflow:"hidden",marginBottom:14}}>
-      <div onClick={()=>setOpen(o=>!o)}
+      <div onClick={toggle}
         style={{background:c+"0e",borderBottom:open?"1px solid "+T.border:"none",padding:"12px 18px",
           display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",userSelect:"none"}}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -577,7 +608,7 @@ function CollapsibleSection({ title, icon, children, defaultOpen=true, accentCol
 // ══════════════════════════════════════════════════════════════════════════════
 // EDITABLE TABLE — full inline name & value editing + slider
 // ══════════════════════════════════════════════════════════════════════════════
-function EditableTable({ title, icon, items, setItems, accentColor, sliderMax }) {
+function EditableTable({ title, icon, items, setItems, accentColor, sliderMax, bare }) {
   const T=useTheme(); const sMax=sliderMax||5000;
   const [adding,setAdding]=useState(false);
   const [nName,setNName]=useState(""); const [nAmt,setNAmt]=useState(""); const [nType,setNType]=useState("other");
@@ -591,8 +622,8 @@ function EditableTable({ title, icon, items, setItems, accentColor, sliderMax })
   const inputS={background:T.faint,border:"1px solid "+T.border,borderRadius:6,padding:"7px 10px",color:T.text,fontFamily:"monospace",fontSize:14,outline:"none"};
 
   return (
-    <div style={{background:T.card,border:"1px solid "+T.border,borderRadius:14,overflow:"hidden",marginBottom:14}}>
-      <div style={{background:accentColor+"14",borderBottom:"1px solid "+T.border,padding:"12px 18px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+    <div style={{background:bare?"transparent":T.card,border:bare?"none":"1px solid "+T.border,borderRadius:bare?0:14,overflow:"hidden",marginBottom:bare?0:14}}>
+      <div style={{background:bare?"transparent":accentColor+"14",borderBottom:bare?"none":"1px solid "+T.border,padding:"12px 18px",display:bare?"none":"flex",justifyContent:"space-between",alignItems:"center"}}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           <span style={{fontSize:15}}>{icon}</span>
           <span style={{fontSize:11,fontWeight:700,letterSpacing:2,textTransform:"uppercase",color:T.text,fontFamily:"monospace"}}>{title}</span>
@@ -663,6 +694,214 @@ function EditableTable({ title, icon, items, setItems, accentColor, sliderMax })
   );
 }
 
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// LIABILITIES TAB
+// ══════════════════════════════════════════════════════════════════════════════
+function LiabilitiesTab({ liabilities, setLiabilities, assets, openingBalance, income, expenses, fmt, fmtK }) {
+  const T = useTheme();
+  const [adding, setAdding] = useState(false);
+  const [nName, setNName] = useState("");
+  const [nCat,  setNCat]  = useState("mortgage");
+  const [nBal,  setNBal]  = useState("");
+  const [nRate, setNRate] = useState("4.5");
+  const [nPmt,  setNPmt]  = useState("");
+
+  const active       = useMemo(()=>liabilities.filter(l=>!l.excluded), [liabilities]);
+  const totalDebt    = useMemo(()=>active.reduce((s,l)=>s+(Number(l.balance)||0),0), [active]);
+  const totalAssets  = useMemo(()=>(assets||[]).filter(a=>!a.excluded).reduce((s,a)=>s+(Number(a.value)||0),0), [assets]);
+  const netWorth     = totalAssets + openingBalance - totalDebt;
+  const totalPmts    = useMemo(()=>active.reduce((s,l)=>s+(Number(l.monthlyPayment)||0),0), [active]);
+  const debtToIncome = income>0 ? (totalPmts/income)*100 : 0;
+  const catMap       = Object.fromEntries(LIABILITY_CATEGORIES.map(c=>[c.value,c]));
+
+  const upd  = (id,k,v) => setLiabilities(p=>p.map(l=>l.id===id?{...l,[k]:v}:l));
+  const tog  = id        => setLiabilities(p=>p.map(l=>l.id===id?{...l,excluded:!l.excluded}:l));
+  const del  = id        => setLiabilities(p=>p.filter(l=>l.id!==id));
+  const add  = () => {
+    const b=parseFloat(nBal), r=parseFloat(nRate), m=parseFloat(nPmt);
+    if(!nName.trim()||isNaN(b)||b<0) return;
+    setLiabilities(p=>[...p,{id:uid(),name:nName.trim(),category:nCat,balance:b,interestRate:isNaN(r)?0:r,monthlyPayment:isNaN(m)?0:m,notes:"",excluded:false,custom:true}]);
+    setNName(""); setNBal(""); setNRate("4.5"); setNPmt(""); setAdding(false);
+  };
+  const inputS = {background:T.faint,border:"1px solid "+T.border,borderRadius:6,padding:"7px 10px",color:T.text,fontFamily:"monospace",fontSize:14,outline:"none"};
+
+  const insights = useMemo(()=>{
+    if(totalDebt<=0) return [{icon:"✅",color:T.green,text:"No liabilities recorded. Add your debts here to see your true net worth and debt-to-income ratio."}];
+    const list = [];
+    // Debt-to-income
+    if(debtToIncome>43) list.push({icon:"⚠️",color:T.red,  text:`Monthly debt payments are ${pct(debtToIncome)} of income — above the 43% threshold lenders consider high risk. Consider paying down the highest-interest debt first.`});
+    else if(debtToIncome>28) list.push({icon:"📊",color:T.amber,text:`Debt payments at ${pct(debtToIncome)} of income. The 28% rule suggests keeping this below 28% for housing, 36% total. You have limited headroom.`});
+    else list.push({icon:"✅",color:T.green,text:`Debt-to-income of ${pct(debtToIncome)} is within healthy range. This means lenders and advisors would typically view your debt load as manageable.`});
+    // Highest interest
+    const highest = active.reduce((mx,l)=>(!mx||l.interestRate>mx.interestRate)?l:mx, null);
+    if(highest&&highest.interestRate>5) list.push({icon:"🔥",color:T.red,text:`${highest.name} at ${pct(highest.interestRate)} interest is your most expensive debt. Paying this down first (avalanche method) saves the most in total interest over time.`});
+    // Net worth position
+    if(netWorth<0) list.push({icon:"⚠️",color:T.red,text:`Net worth is currently ${fmtK(netWorth)} — total debts exceed total assets. This is common early in life (e.g. mortgages). Focus on growing assets and reducing high-interest debt.`});
+    else list.push({icon:"💼",color:T.blue,text:`True net worth: ${fmtK(netWorth)} (${fmtK(totalAssets+openingBalance)} assets minus ${fmtK(totalDebt)} liabilities). Growing this number is the core goal of long-term financial planning.`});
+    return list.slice(0,4);
+  },[active, totalDebt, totalAssets, netWorth, debtToIncome, income, T, fmtK]);
+
+  return (
+    <div>
+      {/* Summary KPIs */}
+      <div className="fc-grid-3" style={{marginBottom:14}}>
+        <div style={{background:T.card,border:"1px solid "+T.border,borderRadius:14,padding:"16px 18px"}}>
+          <div style={{fontSize:10,letterSpacing:1.5,textTransform:"uppercase",color:T.muted,marginBottom:7}}>Total Debt</div>
+          <div style={{fontSize:26,fontFamily:"monospace",fontWeight:700,color:T.red}}>{fmtK(totalDebt)}</div>
+          <div style={{fontSize:11,color:T.muted,marginTop:4}}>{totalPmts>0&&fmt(totalPmts)+"/mo payments"}</div>
+        </div>
+        <div style={{background:T.card,border:"1px solid "+T.border,borderRadius:14,padding:"16px 18px"}}>
+          <div style={{fontSize:10,letterSpacing:1.5,textTransform:"uppercase",color:T.muted,marginBottom:7}}>Net Worth</div>
+          <div style={{fontSize:26,fontFamily:"monospace",fontWeight:700,color:netWorth>=0?T.green:T.red}}>{fmtK(netWorth)}</div>
+          <div style={{fontSize:11,color:T.muted,marginTop:4}}>Assets − Liabilities</div>
+        </div>
+        <div style={{background:T.card,border:"1px solid "+T.border,borderRadius:14,padding:"16px 18px"}}>
+          <div style={{fontSize:10,letterSpacing:1.5,textTransform:"uppercase",color:T.muted,marginBottom:7}}>Debt-to-Income</div>
+          <div style={{fontSize:26,fontFamily:"monospace",fontWeight:700,color:debtToIncome>43?T.red:debtToIncome>28?T.amber:T.green}}>{pct(debtToIncome)}</div>
+          <div style={{fontSize:11,color:T.muted,marginTop:4}}>Monthly payments vs income</div>
+        </div>
+      </div>
+
+      {/* Liability list */}
+      <CollapsibleSection title="My Liabilities" icon="📋" accentColor={T.red} storeKey="lib-list" badge={fmtK(totalDebt)}>
+        <div style={{padding:"10px 18px 6px"}}>
+          {liabilities.length===0&&(
+            <div style={{padding:"24px 0",textAlign:"center",color:T.muted,fontSize:12,fontFamily:"monospace"}}>
+              No liabilities added yet. Tap + Add Liability below.
+            </div>
+          )}
+          {liabilities.map(l=>{
+            const catInfo = catMap[l.category]||{emoji:"📋",label:"Other"};
+            const debtShare = totalDebt>0&&!l.excluded ? (l.balance/totalDebt)*100 : 0;
+            const monthlyInterest = !l.excluded ? Math.round((Number(l.balance)||0)*(Number(l.interestRate)||0)/100/12) : 0;
+            return (
+              <div key={l.id} style={{marginBottom:16,opacity:l.excluded?0.35:1,transition:"opacity 0.2s"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,flexWrap:"wrap"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,flex:1,minWidth:0}}>
+                    <span style={{fontSize:18,flexShrink:0}}>{catInfo.emoji}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <InlineEdit value={l.name} onCommit={v=>upd(l.id,"name",v)}
+                        style={{fontSize:13,color:T.text,fontFamily:"monospace",fontWeight:600}} />
+                      <div style={{fontSize:10,color:T.muted,fontFamily:"monospace",marginTop:2}}>{catInfo.label}</div>
+                    </div>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0,flexWrap:"wrap"}}>
+                    {!l.excluded&&<span style={{fontSize:10,color:T.muted,fontFamily:"monospace"}}>{pct(debtShare)}</span>}
+                    <InlineEdit value={l.balance} type="number" onCommit={v=>upd(l.id,"balance",Math.max(0,v))}
+                      style={{fontSize:14,color:T.red,fontFamily:"monospace",fontWeight:700,textAlign:"right",maxWidth:110}} />
+                    {!l.excluded&&(
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <div style={{position:"relative",width:56,height:18,flexShrink:0}}>
+                          <div style={{position:"absolute",top:"50%",transform:"translateY(-50%)",left:0,right:0,height:4,background:T.faint,borderRadius:2}} />
+                          <div style={{position:"absolute",top:"50%",transform:"translateY(-50%)",left:0,height:4,width:Math.min(100,(Number(l.interestRate)||0)/20*100)+"%",background:T.red+"88",borderRadius:2}} />
+                          <input type="range" min={0} max={20} step={0.1} value={Number(l.interestRate)||0}
+                            onChange={e=>upd(l.id,"interestRate",Number(e.target.value))}
+                            style={{position:"absolute",top:"50%",transform:"translateY(-50%)",width:"100%",opacity:0,cursor:"pointer",height:18,margin:0}} />
+                        </div>
+                        <input type="number" value={Number(l.interestRate)||0} min={0} max={30} step={0.1}
+                          onChange={e=>upd(l.id,"interestRate",Math.min(30,Math.max(0,Number(e.target.value))))}
+                          className="fc-no-spin"
+                          style={{width:32,background:"transparent",border:"none",color:T.amber,fontFamily:"monospace",fontSize:11,fontWeight:700,outline:"none",textAlign:"right",padding:0}} />
+                        <span style={{fontSize:10,color:T.muted,fontFamily:"monospace"}}>%</span>
+                      </div>
+                    )}
+                    <button onClick={()=>tog(l.id)} style={{background:"transparent",border:"1px solid "+T.border,color:T.muted,cursor:"pointer",fontSize:10,padding:"3px 7px",borderRadius:4,fontFamily:"monospace"}}>{l.excluded?"on":"off"}</button>
+                    {l.custom&&<button onClick={()=>del(l.id)} style={{background:"transparent",border:"none",color:T.muted,cursor:"pointer",fontSize:18,padding:"0 2px",lineHeight:1}}>×</button>}
+                  </div>
+                </div>
+                {!l.excluded&&(
+                  <div style={{marginTop:8,display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
+                    <div style={{flex:1,position:"relative",height:4,background:T.faint,borderRadius:2,minWidth:80}}>
+                      <div style={{position:"absolute",left:0,top:0,height:"100%",width:Math.min(100,debtShare)+"%",background:T.red+"66",borderRadius:2,transition:"width 0.25s"}} />
+                    </div>
+                    <span style={{fontSize:10,color:T.red,fontFamily:"monospace",flexShrink:0}}>
+                      ~{fmt(monthlyInterest)}/mo interest · {l.monthlyPayment>0?fmt(l.monthlyPayment)+"/mo payment":"no payment set"}
+                    </span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {adding?(
+          <div style={{padding:"14px 18px",borderTop:"1px solid "+T.border,background:T.surface}}>
+            <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:8,marginBottom:8}}>
+              <input placeholder="Liability name (e.g. Halifax Mortgage)" value={nName} onChange={e=>setNName(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&add()} style={{...inputS}} />
+              <select value={nCat} onChange={e=>setNCat(e.target.value)} style={{...inputS,background:T.faint}}>
+                {LIABILITY_CATEGORIES.map(c=><option key={c.value} value={c.value}>{c.emoji} {c.label}</option>)}
+              </select>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:8}}>
+              <div>
+                <div style={{fontSize:9,color:T.muted,fontFamily:"monospace",letterSpacing:1,textTransform:"uppercase",marginBottom:3}}>Outstanding Balance</div>
+                <input type="number" placeholder="e.g. 250000" value={nBal} onChange={e=>setNBal(e.target.value)} style={{...inputS,width:"100%"}} />
+              </div>
+              <div>
+                <div style={{fontSize:9,color:T.muted,fontFamily:"monospace",letterSpacing:1,textTransform:"uppercase",marginBottom:3}}>Interest Rate %</div>
+                <input type="number" placeholder="e.g. 4.5" value={nRate} onChange={e=>setNRate(e.target.value)} style={{...inputS,width:"100%"}} className="fc-no-spin" />
+              </div>
+              <div>
+                <div style={{fontSize:9,color:T.muted,fontFamily:"monospace",letterSpacing:1,textTransform:"uppercase",marginBottom:3}}>Monthly Payment</div>
+                <input type="number" placeholder="e.g. 1200" value={nPmt} onChange={e=>setNPmt(e.target.value)} style={{...inputS,width:"100%"}} />
+              </div>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={add} style={{background:T.red,border:"none",color:"#fff",borderRadius:6,padding:"8px 14px",cursor:"pointer",fontSize:12,fontFamily:"monospace",fontWeight:700}}>Add</button>
+              <button onClick={()=>setAdding(false)} style={{background:T.faint,border:"none",color:T.muted,borderRadius:6,padding:"8px 10px",cursor:"pointer",fontSize:12,fontFamily:"monospace"}}>Cancel</button>
+            </div>
+          </div>
+        ):(
+          <div style={{padding:"10px 18px",borderTop:"1px solid "+T.border}}>
+            <button onClick={()=>setAdding(true)} style={{background:T.red+"18",border:"1px solid "+T.red+"44",color:T.red,borderRadius:6,padding:"7px 16px",cursor:"pointer",fontSize:11,fontFamily:"monospace",fontWeight:700}}>+ Add Liability</button>
+          </div>
+        )}
+      </CollapsibleSection>
+
+      {/* Debt breakdown */}
+      {active.length>0&&(
+        <CollapsibleSection title="Breakdown by Type" icon="📊" accentColor={T.amber} storeKey="lib-breakdown" defaultOpen={false}>
+          <div style={{padding:"16px 18px"}}>
+            {LIABILITY_CATEGORIES.filter(c=>active.some(l=>l.category===c.value)).map(c=>{
+              const catTotal=active.filter(l=>l.category===c.value).reduce((s,l)=>s+(Number(l.balance)||0),0);
+              const barPct=totalDebt>0?(catTotal/totalDebt)*100:0;
+              return (
+                <div key={c.value} style={{marginBottom:12}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,alignItems:"center"}}>
+                    <span style={{fontSize:12,color:T.text,fontFamily:"monospace"}}>{c.emoji} {c.label}</span>
+                    <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                      <span style={{fontSize:11,color:T.muted,fontFamily:"monospace"}}>{pct(barPct)}</span>
+                      <span style={{fontSize:13,color:T.red,fontFamily:"monospace",fontWeight:700}}>{fmtK(catTotal)}</span>
+                    </div>
+                  </div>
+                  <div style={{height:6,background:T.faint,borderRadius:3}}>
+                    <div style={{height:"100%",width:barPct+"%",background:T.red+"88",borderRadius:3,transition:"width 0.3s"}} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </CollapsibleSection>
+      )}
+
+      {/* Insights */}
+      <CollapsibleSection title="Liability Insights" icon="💡" storeKey="lib-insights" accentColor={T.purple} defaultOpen={true}>
+        <div style={{padding:"14px 18px 18px"}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            {insights.map((ins,i)=>(
+              <div key={i} style={{background:ins.color+"0d",border:"1px solid "+ins.color+"33",borderRadius:10,padding:"12px 14px",display:"flex",gap:10,alignItems:"flex-start"}}>
+                <span style={{fontSize:16,flexShrink:0}}>{ins.icon}</span>
+                <p style={{margin:0,fontSize:11,color:T.muted,lineHeight:1.7}}>{ins.text}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </CollapsibleSection>
+    </div>
+  );
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ASSETS TAB — manage real-world assets and see projected growth
@@ -775,7 +1014,7 @@ function AssetsTab({ assets, setAssets, fmt, fmtK, targetNetWorth, weightedRetur
       </div>
 
       {/* Asset list */}
-      <CollapsibleSection title="My Assets" icon="💼" accentColor={T.green} badge={fmtK(total)}>
+      <CollapsibleSection title="My Assets" icon="💼" storeKey="ast-list" accentColor={T.green} badge={fmtK(total)}>
         <div style={{padding:"10px 18px 6px"}}>
           {assets.map((a,idx)=>{
             const catInfo = catMap[a.category]||{emoji:"📦",label:"Other"};
@@ -799,9 +1038,18 @@ function AssetsTab({ assets, setAssets, fmt, fmtK, targetNetWorth, weightedRetur
                         style={{fontSize:14,color:T.green,fontFamily:"monospace",fontWeight:700,textAlign:"right",maxWidth:110}} />
                     </div>
                     {!a.excluded&&(
-                      <div title="Annual return %" style={{display:"flex",alignItems:"center",gap:2,background:T.faint,border:"1px solid "+T.border+"88",borderRadius:5,padding:"2px 6px"}}>
-                        <InlineEdit value={a.annualReturn??0} type="number" onCommit={v=>upd(a.id,"annualReturn",Math.min(40,Math.max(0,v)))}
-                          style={{fontSize:10,color:T.blue,fontFamily:"monospace",fontWeight:700,textAlign:"right",maxWidth:30}} />
+                      <div title="Annual return — drag to adjust" style={{display:"flex",alignItems:"center",gap:6}}>
+                        <div style={{position:"relative",width:64,height:18,flexShrink:0}}>
+                          <div style={{position:"absolute",top:"50%",transform:"translateY(-50%)",left:0,right:0,height:4,background:T.faint,borderRadius:2}} />
+                          <div style={{position:"absolute",top:"50%",transform:"translateY(-50%)",left:0,height:4,width:Math.min(100,(Number(a.annualReturn)||0)/25*100)+"%",background:T.blue+"88",borderRadius:2}} />
+                          <input type="range" min={0} max={25} step={0.5} value={Number(a.annualReturn)||0}
+                            onChange={e=>upd(a.id,"annualReturn",Number(e.target.value))}
+                            style={{position:"absolute",top:"50%",transform:"translateY(-50%)",width:"100%",opacity:0,cursor:"pointer",height:18,margin:0}} />
+                        </div>
+                        <input type="number" value={Number(a.annualReturn)||0} min={0} max={25} step={0.5}
+                          onChange={e=>upd(a.id,"annualReturn",Math.min(25,Math.max(0,Number(e.target.value))))}
+                          className="fc-no-spin"
+                          style={{width:36,background:"transparent",border:"none",color:T.blue,fontFamily:"monospace",fontSize:11,fontWeight:700,outline:"none",textAlign:"right",padding:0}} />
                         <span style={{fontSize:10,color:T.muted,fontFamily:"monospace"}}>%</span>
                       </div>
                     )}
@@ -810,13 +1058,12 @@ function AssetsTab({ assets, setAssets, fmt, fmtK, targetNetWorth, weightedRetur
                   </div>
                 </div>
                 {!a.excluded&&(
-                  <div style={{marginTop:8,display:"flex",gap:16,flexWrap:"wrap"}}>
-                    <div style={{flex:1}}>
-                      <div style={{height:4,background:T.faint,borderRadius:2}}>
-                        <div style={{height:"100%",width:Math.min(100,share)+"%",background:T.green+"88",borderRadius:2,transition:"width 0.2s"}} />
-                      </div>
+                  <div style={{marginTop:8,display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
+                    <div style={{flex:1,position:"relative",height:4,background:T.faint,borderRadius:2,minWidth:80}}>
+                      <div style={{position:"absolute",left:0,top:0,height:"100%",width:Math.min(100,share)+"%",background:T.green+"88",borderRadius:2,transition:"width 0.25s"}} />
                     </div>
-                    <span style={{fontSize:10,color:T.muted,fontFamily:"monospace",flexShrink:0}}>→ {fmtK(proj10)} in 10yr</span>
+                    <span style={{fontSize:10,color:T.muted,fontFamily:"monospace",flexShrink:0}}>{pct(share)} · </span>
+                    <span style={{fontSize:10,color:T.green,fontFamily:"monospace",fontWeight:700,flexShrink:0}}>→ {fmtK(proj10)} in 10yr @ {pct(Number(a.annualReturn)||0)}</span>
                   </div>
                 )}
               </div>
@@ -854,7 +1101,7 @@ function AssetsTab({ assets, setAssets, fmt, fmtK, targetNetWorth, weightedRetur
 
       {/* Category allocation */}
       {active.length>0&&(
-        <CollapsibleSection title="Allocation by Category" icon="📊" accentColor={T.blue} defaultOpen={true}>
+        <CollapsibleSection title="Allocation by Category" icon="📊" accentColor={T.blue} storeKey="ast-alloc" defaultOpen={true}>
           <div style={{padding:"16px 18px"}}>
             {byCategory.map(([cat,val])=>{
               const c2=catMap[cat]||{emoji:"📦",label:"Other"};
@@ -881,7 +1128,7 @@ function AssetsTab({ assets, setAssets, fmt, fmtK, targetNetWorth, weightedRetur
 
       {/* Growth projection table */}
       {active.length>0&&(
-        <CollapsibleSection title="Growth Projections" icon="📈" accentColor={T.purple} defaultOpen={false}>
+        <CollapsibleSection title="Growth Projections" icon="📈" accentColor={T.purple} storeKey="ast-growth" defaultOpen={false}>
           <div style={{overflowX:"auto",padding:"0"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,fontFamily:"monospace"}}>
               <thead>
@@ -922,7 +1169,7 @@ function AssetsTab({ assets, setAssets, fmt, fmtK, targetNetWorth, weightedRetur
 
       {/* Asset insights */}
       {insights.length>0&&(
-        <CollapsibleSection title="Asset Insights" icon="💡" accentColor={T.purple} defaultOpen={true}>
+        <CollapsibleSection title="Asset Insights" icon="💡" storeKey="ast-insights" accentColor={T.purple} defaultOpen={true}>
           <div style={{padding:"14px 18px 18px"}}>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
               {insights.map((ins,i)=>(
@@ -936,6 +1183,69 @@ function AssetsTab({ assets, setAssets, fmt, fmtK, targetNetWorth, weightedRetur
         </CollapsibleSection>
       )}
     </div>
+  );
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SAVINGS GROWTH CHART — extracted as proper component to allow useState
+// ══════════════════════════════════════════════════════════════════════════════
+function SavingsGrowthChart({ buckets, fmt, fmtK }) {
+  const T = useTheme();
+  const SAV_POINTS = [1,2,3,4,6,9,12,18,24,36,48,60];
+  const allBuckets = buckets.filter(b=>!b.excluded);
+  const [hiddenIds, setHiddenIds] = useState(()=>new Set());
+  const activeBuckets = allBuckets.filter(b=>!hiddenIds.has(b.id));
+
+  const chartData = useMemo(()=>SAV_POINTS.map(mo=>{
+    const bucketVals = activeBuckets.map(b=>{
+      const r = (Number(b.annualReturn)||7)/100;
+      return Math.round(fv(b.amount, r, mo/12));
+    });
+    return { mo, buckets:bucketVals, total:bucketVals.reduce((s,v)=>s+v,0) };
+  }),[activeBuckets]);
+
+  const yMax2   = Math.max(...chartData.map(d=>d.total),1);
+  const yTicks2 = useMemo(()=>niceYTicks(yMax2, 5),[yMax2]);
+  const yRange2 = Math.max(yTicks2[yTicks2.length-1],1);
+  const CHART_H2 = 180;
+  const YAXIS_W2 = 52;
+  const formatMo = mo=>mo<12?mo+"m":mo===12?"1yr":mo<24?(mo/12).toFixed(1)+"yr":(mo/12)+"yr";
+
+  return (
+              <CollapsibleSection title="Savings Growth by Bucket" icon="📈" storeKey="sav-chart" accentColor={T.green} defaultOpen={true}>
+              <div style={{padding:"20px 22px"}}>
+                <div style={{marginBottom:14}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:8}}>
+                    <Lbl color={T.green}>Savings Growth by Bucket</Lbl>
+                    <span style={{fontSize:10,color:T.muted,fontFamily:"monospace"}}>Cumulative total · hover for breakdown</span>
+                  </div>
+                  <div style={{display:"flex",gap:12,flexWrap:"wrap",paddingBottom:10,borderBottom:"1px solid "+T.border}}>
+                    {allBuckets.map((b,i)=>{
+                      const hidden = hiddenIds.has(b.id);
+                      const c = b.color||SAV_COLORS[i%SAV_COLORS.length];
+                      return (
+                        <div key={b.id} onClick={()=>setHiddenIds(s=>{const n=new Set(s); n.has(b.id)?n.delete(b.id):n.add(b.id); return n;})}
+                          title={hidden?"Click to show":"Click to hide"}
+                          style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",opacity:hidden?0.35:1,transition:"opacity 0.2s",userSelect:"none"}}>
+                          <div style={{width:10,height:10,borderRadius:2,background:hidden?T.muted:c,flexShrink:0,transition:"background 0.2s"}} />
+                          <span style={{fontSize:10,color:hidden?T.muted:T.text,fontFamily:"monospace",fontWeight:hidden?400:500,transition:"all 0.2s"}}>{b.name}</span>
+                          {hidden&&<span style={{fontSize:9,color:T.muted,fontFamily:"monospace"}}>(hidden)</span>}
+                        </div>
+                      );
+                    })}
+                    <span style={{fontSize:9,color:T.muted+"88",fontFamily:"monospace",alignSelf:"center"}}>click to toggle</span>
+                  </div>
+                </div>
+                {/* Chart: Y-axis + bars — extra bottom padding for x-axis labels */}
+                <div style={{paddingBottom:24}}>
+                  <SavingsChart
+                    chartData={chartData} activeBuckets={activeBuckets}
+                    yTicks={yTicks2} yRange={yRange2} CHART_H={CHART_H2} YAXIS_W={YAXIS_W2}
+                    formatMo={formatMo} fmt={fmt} fmtK={fmtK} />
+                </div>
+              </div>
+              </CollapsibleSection>
   );
 }
 
@@ -1404,7 +1714,9 @@ function CashflowTab({ cashflow, setCashflow, monthlyIncome, monthlyExpenses, mo
         const surplus=monthlyIncome-monthlyExpenses-monthlySavings;
         const toTarget=rm<6&&surplus>0?Math.max(0,(rt-openingBalance)/surplus):null;
         return (
-          <div style={{background:T.card,border:"1px solid "+rc+"44",borderRadius:14,padding:"16px 20px",marginBottom:14}}>
+          <CollapsibleSection title="Cash Runway — Liquid Balance" icon="🛡️" storeKey="cf-runway" accentColor={rc} defaultOpen={true}
+            badge={(isFinite(rm)?rm:0).toFixed(1)+" mo"}>
+          <div style={{padding:"16px 20px"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,flexWrap:"wrap",gap:10}}>
               <div>
                 <Lbl color={rc}>Cash Runway — Liquid Balance</Lbl>
@@ -1445,11 +1757,11 @@ function CashflowTab({ cashflow, setCashflow, monthlyIncome, monthlyExpenses, mo
               ))}
             </div>
           </div>
+          </CollapsibleSection>
         );
       })()}
 
       {/* ── SUMMARY KPIS ──────────────────────────────────────────────────── */}
-      {/* Four quick numbers at the top so the user always sees the headline */}
       <div className="fc-cashflow-grid" style={{marginBottom:16}}>
         <StatCard label="Opening Balance"  value={fmt(openingBalance)}         color={T.blue}  sub="Starting cash position" />
         <StatCard label="Total One-Offs"   value={fmt(summary.totalOneOffs)}   color={T.amber} sub="Non-recurring costs" />
@@ -1472,19 +1784,21 @@ function CashflowTab({ cashflow, setCashflow, monthlyIncome, monthlyExpenses, mo
       </div>
 
       {/* ── OPENING BALANCE EDITOR ───────────────────────────────────────── */}
-      {/* This is your current liquid cash — the starting point for all projections */}
-      <div style={{background:T.card,border:"1px solid "+T.border,borderRadius:12,padding:"14px 18px",marginBottom:14,display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
-        <div style={{flex:1,minWidth:200}}>
-          <div style={{fontSize:11,color:T.muted,marginBottom:4}}>Current liquid savings — bank balance, not investments or pension</div>
-          <div style={{fontSize:10,color:T.muted,lineHeight:1.6}}>This is cash you can access immediately. It's the starting point for all cashflow calculations below.</div>
+      <CollapsibleSection title="Opening Balance" icon="💵" storeKey="cf-balance" accentColor={T.blue} defaultOpen={false}
+        badge={fmt(openingBalance)}>
+        <div style={{padding:"14px 18px",display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
+          <div style={{flex:1,minWidth:200}}>
+            <div style={{fontSize:11,color:T.muted,marginBottom:4}}>Current liquid savings — bank balance, not investments or pension.</div>
+            <div style={{fontSize:10,color:T.muted,lineHeight:1.6}}>Cash you can access immediately. Starting point for all cashflow projections.</div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+            {cashflow.openingBalance<0&&<span style={{fontSize:11,color:T.red,fontFamily:"monospace"}}>⚠ low</span>}
+            <InlineEdit value={openingBalance} type="number" onCommit={v=>setCashflow(cf=>({...cf,openingBalance:v}))}
+              style={{fontSize:20,color:T.blue,fontFamily:"monospace",fontWeight:700,minWidth:80,textAlign:"right"}} />
+            <span style={{fontSize:12,color:T.muted,fontFamily:"monospace"}}>opening balance</span>
+          </div>
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
-          <span style={{fontSize:11,color:T.red,fontFamily:"monospace"}}>{cashflow.openingBalance<0?"⚠ low":""}</span>
-          <InlineEdit value={openingBalance} type="number" onCommit={v=>setCashflow(cf=>({...cf,openingBalance:v}))}
-            style={{fontSize:20,color:T.blue,fontFamily:"monospace",fontWeight:700,minWidth:80,textAlign:"right"}} />
-          <span style={{fontSize:12,color:T.muted,fontFamily:"monospace"}}>opening balance</span>
-        </div>
-      </div>
+      </CollapsibleSection>
 
       {/* ══ STACKED BAR CHART ════════════════════════════════════════════════
           Each bar has three layers stacked from the bottom:
@@ -1494,7 +1808,8 @@ function CashflowTab({ cashflow, setCashflow, monthlyIncome, monthlyExpenses, mo
           The Y-axis shows dynamic $ labels at rounded intervals.
           The X-axis shows month labels at intervals that depend on the view.
       ══════════════════════════════════════════════════════════════════════ */}
-      <div style={{background:T.card,border:"1px solid "+T.border,borderRadius:14,padding:"20px 22px",marginBottom:14}}>
+      <CollapsibleSection title={"Cashflow Chart — "+viewConfig[cfView]?.label} icon="📊" accentColor={T.green} defaultOpen={true}>
+      <div style={{padding:"20px 22px"}}>
         {/* Chart header + legend */}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
           <Lbl color={T.green}>Closing Balance — {viewConfig[cfView]?.label} View</Lbl>
@@ -1719,41 +2034,34 @@ function CashflowTab({ cashflow, setCashflow, monthlyIncome, monthlyExpenses, mo
           Hover any bar for a full breakdown · Click a month row below to add one-off cash movements
         </div>
       </div>
+      </CollapsibleSection>
 
       {/* ── CASHFLOW INSIGHTS ─────────────────────────────────────────────── */}
-      {/* Four auto-updating insights based on the current numbers */}
-      <div style={{background:T.card,border:"1px solid "+T.border,borderRadius:14,padding:"18px 20px",marginBottom:14}}>
-        <Lbl color={T.purple}>💡 Cashflow Insights — {viewConfig[cfView]?.label}</Lbl>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:10}}>
-          {insights.map((ins,i)=>(
-            <div key={i} style={{background:ins.color+"0d",border:"1px solid "+ins.color+"33",borderRadius:10,padding:"12px 14px",display:"flex",gap:10,alignItems:"flex-start"}}>
-              <span style={{fontSize:16,flexShrink:0}}>{ins.icon}</span>
-              <p style={{margin:0,fontSize:11,color:T.muted,lineHeight:1.7}}>{ins.text}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* ══ MONTH-BY-MONTH DETAIL TABLE ═══════════════════════════════════════
-          Separate view selector (6m/12m/18m/24m) from the chart above.
-          The table becomes scrollable when showing more than 12 months.
-      ══════════════════════════════════════════════════════════════════════ */}
-      <div style={{background:T.card,border:"1px solid "+T.border,borderRadius:14,overflow:"hidden",marginBottom:14}}>
-        <div style={{padding:"12px 18px",borderBottom:"1px solid "+T.border,background:T.surface,
-          display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
-          <Lbl color={T.blue}>Month-by-Month Detail</Lbl>
-          {/* Table period selector — independent of chart view */}
-          <div style={{display:"flex",gap:4,alignItems:"center"}}>
-            <span style={{fontSize:9,color:T.muted,letterSpacing:1,textTransform:"uppercase",marginRight:4}}>Show:</span>
-            {Object.entries(tableViewConfig).map(([key,v])=>(
-              <button key={key} onClick={()=>setTableView(key)}
-                style={{background:tableView===key?T.blue+"33":T.faint,border:"1px solid "+(tableView===key?T.blue+"66":T.border),
-                  color:tableView===key?T.blue:T.muted,borderRadius:6,padding:"4px 9px",cursor:"pointer",
-                  fontSize:10,fontFamily:"monospace",fontWeight:tableView===key?700:400,transition:"all 0.15s"}}>
-                {v.label}
-              </button>
+      <CollapsibleSection title={"Cashflow Insights — "+viewConfig[cfView]?.label} icon="💡" accentColor={T.purple} defaultOpen={true}>
+        <div style={{padding:"14px 18px 18px"}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            {insights.map((ins,i)=>(
+              <div key={i} style={{background:ins.color+"0d",border:"1px solid "+ins.color+"33",borderRadius:10,padding:"12px 14px",display:"flex",gap:10,alignItems:"flex-start"}}>
+                <span style={{fontSize:16,flexShrink:0}}>{ins.icon}</span>
+                <p style={{margin:0,fontSize:11,color:T.muted,lineHeight:1.7}}>{ins.text}</p>
+              </div>
             ))}
           </div>
+        </div>
+      </CollapsibleSection>
+
+      {/* ══ MONTH-BY-MONTH DETAIL TABLE ═══════════════════════════════════════ */}
+      <CollapsibleSection title="Month-by-Month Detail" icon="📅" storeKey="cf-table" accentColor={T.blue} defaultOpen={false}>
+        <div style={{borderBottom:"1px solid "+T.border,padding:"10px 18px",display:"flex",gap:4,alignItems:"center",background:T.surface}}>
+          <span style={{fontSize:9,color:T.muted,letterSpacing:1,textTransform:"uppercase",marginRight:6}}>Show:</span>
+          {Object.entries(tableViewConfig).map(([key,v])=>(
+            <button key={key} onClick={()=>setTableView(key)}
+              style={{background:tableView===key?T.blue+"33":T.faint,border:"1px solid "+(tableView===key?T.blue+"66":T.border),
+                color:tableView===key?T.blue:T.muted,borderRadius:6,padding:"4px 9px",cursor:"pointer",
+                fontSize:10,fontFamily:"monospace",fontWeight:tableView===key?700:400,transition:"all 0.15s"}}>
+              {v.label}
+            </button>
+          ))}
         </div>
         {/* The table container is scrollable vertically for > 12 months */}
         <div style={{overflowX:"auto",overflowY:"auto",maxHeight:tableNumMonths>12?"520px":undefined}}>
@@ -1844,12 +2152,12 @@ function CashflowTab({ cashflow, setCashflow, monthlyIncome, monthlyExpenses, mo
             </tfoot>
           </table>
         </div>
-      </div>
+      </CollapsibleSection>
 
-      {/* Tips */}
-      <div style={{background:T.amber+"12",border:"1px solid "+T.amber+"33",borderRadius:12,padding:"14px 18px",fontSize:11,color:T.muted,lineHeight:1.8}}>
-        <span style={{color:T.amber,fontWeight:700}}>💡 How to use Cashflow: </span>
-        Use the view buttons to extend your forecast from 12 months to 5 years. Hover any bar in the chart for a full breakdown. Click a month row in the table to add one-off cash movements (holidays, car service, events). All changes update your balance forecast instantly.
+      {/* Tips — condensed, always visible */}
+      <div style={{padding:"10px 18px",fontSize:10,color:T.muted,lineHeight:1.8,background:T.surface,borderRadius:12,border:"1px solid "+T.border}}>
+        <span style={{color:T.amber,fontWeight:700}}>💡 </span>
+        Hover bars for breakdown · Click month rows to add one-offs · Extend view from 12m to 5yr with the chart controls above.
       </div>
     </div>
   );
@@ -2121,7 +2429,7 @@ function OnboardingPage({ user, onComplete }) {
   const handleComplete=async()=>{
     setSaving(true);setError("");
     const profile={country,name:name.trim(),grossSalary:gross,currency:cfg.currency};
-    const dashboard={inclBonus:false,annualBonus:0,customIncome:[],fixedItems:DEFAULT_FIXED(),varItems:DEFAULT_VAR(),savBuckets:DEFAULT_SAV(),assets:DEFAULT_ASSETS(),projInterval:"1y",cashflow:DEFAULT_CASHFLOW(),targetNetWorth:DEFAULT_TARGET_NW,studentLoan:{enabled:false,plan:"plan2",postgrad:false}};
+    const dashboard={inclBonus:false,annualBonus:0,customIncome:[],fixedItems:DEFAULT_FIXED(),varItems:DEFAULT_VAR(),savBuckets:DEFAULT_SAV(),assets:DEFAULT_ASSETS(),liabilities:DEFAULT_LIABILITIES(),projInterval:"1y",cashflow:DEFAULT_CASHFLOW(),targetNetWorth:DEFAULT_TARGET_NW,studentLoan:{enabled:false,plan:"plan2",postgrad:false}};
     const{error:e}=await db.saveUserData(user.id,{profile,dashboard});
     if(e){setError("Could not save. Please try again.");setSaving(false);return;}
     onComplete(profile,dashboard);
@@ -2753,6 +3061,7 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
   const [varItems,    setVarItems]   =useState(()=>initialData?.varItems  ||DEFAULT_VAR());
   const [savBuckets,  setSavBuckets] =useState(()=>initialData?.savBuckets||DEFAULT_SAV());
   const [assets,      setAssets]     =useState(()=>initialData?.assets||DEFAULT_ASSETS());
+  const [liabilities, setLiabilities]=useState(()=>initialData?.liabilities||DEFAULT_LIABILITIES());
   const [targetNetWorth,setTargetNetWorth]=useState(()=>Number(initialData?.targetNetWorth)||DEFAULT_TARGET_NW);
   const [studentLoan,  setStudentLoan] =useState(()=>initialData?.studentLoan||{enabled:false,plan:"plan2",postgrad:false});
   const [projInterval, setProjInterval]=useState(initialData?.projInterval||"1y");
@@ -2781,8 +3090,8 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
 
   const getSnapshot=useCallback(()=>({
     profile:{...profile,grossSalary},
-    dashboard:{inclBonus,annualBonus,customIncome,fixedItems,varItems,savBuckets,assets,projInterval,cashflow,targetNetWorth,studentLoan},
-  }),[profile,grossSalary,inclBonus,annualBonus,customIncome,fixedItems,varItems,savBuckets,assets,projInterval,cashflow,targetNetWorth,studentLoan]);
+    dashboard:{inclBonus,annualBonus,customIncome,fixedItems,varItems,savBuckets,assets,liabilities,projInterval,cashflow,targetNetWorth,studentLoan},
+  }),[profile,grossSalary,inclBonus,annualBonus,customIncome,fixedItems,varItems,savBuckets,assets,liabilities,projInterval,cashflow,targetNetWorth,studentLoan]);
 
   useEffect(()=>{
     setSaveStatus("saving");
@@ -2797,6 +3106,8 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
     return ()=>{ if(saveTimer.current)clearTimeout(saveTimer.current); };
   },[getSnapshot,user.id]);
 
+  const openingBalance = cashflow.openingBalance;
+
   const derived=useMemo(()=>{
     const bonus    =inclBonus?netBonus:0;
     const extra    =sum(customIncome,"amount");
@@ -2809,20 +3120,19 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
     const sRate    =income>0?(savings/income)*100:0;
     const rentAmt  =(fixedItems.find(i=>/rent|mortgage/i.test(i.name))?.amount)||0;
     const housing  =income>0?(rentAmt/income)*100:0;
-    // Assets: total current value of all non-excluded assets
     const totalAssets=(assets||[]).filter(a=>!a.excluded).reduce((s,a)=>s+(Number(a.value)||0),0);
+    const totalLiabilities=(liabilities||[]).filter(l=>!l.excluded).reduce((s,l)=>s+(Number(l.balance)||0),0);
+    const netWorth=totalAssets+openingBalance-totalLiabilities;
     const weightedAssetReturn=(()=>{
       const active=(assets||[]).filter(a=>!a.excluded&&a.value>0);
       const tot=active.reduce((s,a)=>s+(Number(a.value)||0),0);
       if(tot<=0) return 0;
       return active.reduce((s,a)=>s+(Number(a.value)||0)*(Number(a.annualReturn)||0),0)/tot;
     })();
-    return {bonus,extra,income,fixed,variable,savings,expenses,rem,sRate,rentAmt,housing,totalAssets,weightedAssetReturn};
-  },[inclBonus,netBonus,netSalary,customIncome,fixedItems,varItems,savBuckets,assets]);
+    return {bonus,extra,income,fixed,variable,savings,expenses,rem,sRate,rentAmt,housing,totalAssets,weightedAssetReturn,totalLiabilities,netWorth};
+  },[inclBonus,netBonus,netSalary,customIncome,fixedItems,varItems,savBuckets,assets,liabilities,openingBalance]);
 
-  const {bonus,extra,income,fixed,variable,savings,expenses,rem,sRate,rentAmt,housing,totalAssets,weightedAssetReturn}=derived;
-
-  const openingBalance = cashflow.openingBalance;
+  const {bonus,extra,income,fixed,variable,savings,expenses,rem,sRate,rentAmt,housing,totalAssets,weightedAssetReturn,totalLiabilities,netWorth}=derived;
   const weightedReturn = useMemo(()=>weightedAvgReturn(savBuckets),[savBuckets]);
   const runway=useMemo(()=>{
     const months=expenses>0?openingBalance/expenses:0;
@@ -2956,7 +3266,7 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
         {tab==="overview"&&(<>
           <div className="fc-grid-3" style={{marginBottom:14}}>
             <StatCard label="Monthly Surplus" value={(rem>=0?"+":"")+fmt(rem)} color={rem>=0?T.green:T.red} bg={rem>=0?T.green+"14":T.red+"0f"} sub={pct(income>0?(rem/income)*100:0)+" of income"} />
-            <StatCard label="Net Worth Est."  value={fmtK(totalAssets+openingBalance)} color={T.purple} sub={fmtK(totalAssets)+" assets · "+fmt(openingBalance)+" liquid"} />
+            <StatCard label="Net Worth"  value={fmtK(netWorth)} color={netWorth>=0?T.purple:T.red} sub={fmtK(totalAssets)+" assets − "+fmtK(totalLiabilities)+" debt"} />
             <StatCard label="Cash Runway"     value={(isFinite(runway.months)?runway.months:0).toFixed(1)+" mo"} color={runway.color} bg={runway.color+"14"} sub={fmt(openingBalance)+" liquid · "+runway.verdict} />
           </div>
           <div className="fc-grid-3" style={{marginBottom:14}}>
@@ -2966,31 +3276,33 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
           </div>
 
           {/* Runway mini-card — full detail in Cashflow tab */}
-          <div style={{background:T.card,border:"1px solid "+runway.color+"44",borderRadius:14,padding:"14px 18px",marginBottom:14}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:8}}>
-              <Lbl color={runway.color}>Cash Runway</Lbl>
-              <button onClick={()=>setTab("cashflow")} style={{background:T.faint,border:"1px solid "+T.border,color:T.muted,borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:10,fontFamily:"monospace"}}>Full detail in Cashflow →</button>
+          <CollapsibleSection title="Cash Runway" icon="🛡️" accentColor={runway.color} storeKey="ov-runway" defaultOpen={true}
+            badge={(isFinite(runway.months)?runway.months:0).toFixed(1)+" mo"}>
+            <div style={{padding:"14px 18px"}}>
+              <div style={{display:"flex",justifyContent:"flex-end",marginBottom:8}}>
+                <button onClick={()=>setTab("cashflow")} style={{background:T.faint,border:"1px solid "+T.border,color:T.muted,borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:10,fontFamily:"monospace"}}>Full detail in Cashflow →</button>
+              </div>
+              <div style={{position:"relative",height:8,background:T.faint,borderRadius:4,marginBottom:8}}>
+                <div style={{position:"absolute",left:"50%",top:0,width:1,height:"100%",background:T.amber+"55"}} />
+                <div style={{position:"absolute",left:0,top:0,height:"100%",width:runway.pct+"%",background:"linear-gradient(90deg,"+runway.color+"88,"+runway.color+")",borderRadius:4,transition:"width 0.3s"}} />
+              </div>
+              <div className="fc-runway4">
+                {[
+                  {l:"Liquid Balance", v:fmt(openingBalance),c:runway.color},
+                  {l:"Monthly Burn",   v:fmt(expenses),c:T.red},
+                  {l:"6-mo Shortfall", v:openingBalance>=runway.target?"✓ Funded":fmt(runway.target-openingBalance),c:openingBalance>=runway.target?T.green:T.amber},
+                  {l:"Runway",         v:(isFinite(runway.months)?runway.months:0).toFixed(1)+" mo",c:runway.color},
+                ].map(s=>(
+                  <div key={s.l} style={{background:T.surface,borderRadius:10,padding:"10px 14px"}}>
+                    <div style={{fontSize:10,color:T.muted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:4}}>{s.l}</div>
+                    <div style={{fontSize:14,color:s.c,fontFamily:"monospace",fontWeight:700}}>{s.v}</div>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div style={{position:"relative",height:8,background:T.faint,borderRadius:4,marginBottom:8}}>
-              <div style={{position:"absolute",left:"50%",top:0,width:1,height:"100%",background:T.amber+"55"}} />
-              <div style={{position:"absolute",left:0,top:0,height:"100%",width:runway.pct+"%",background:"linear-gradient(90deg,"+runway.color+"88,"+runway.color+")",borderRadius:4,transition:"width 0.3s"}} />
-            </div>
-            <div className="fc-runway4">
-              {[
-                {l:"Liquid Balance", v:fmt(openingBalance),c:runway.color},
-                {l:"Monthly Burn",   v:fmt(expenses),c:T.red},
-                {l:"6-mo Shortfall", v:openingBalance>=runway.target?"✓ Funded":fmt(runway.target-openingBalance),c:openingBalance>=runway.target?T.green:T.amber},
-                {l:"Runway",         v:(isFinite(runway.months)?runway.months:0).toFixed(1)+" mo",c:runway.color},
-              ].map(s=>(
-                <div key={s.l} style={{background:T.surface,borderRadius:10,padding:"10px 14px"}}>
-                  <div style={{fontSize:10,color:T.muted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:4}}>{s.l}</div>
-                  <div style={{fontSize:14,color:s.c,fontFamily:"monospace",fontWeight:700}}>{s.v}</div>
-                </div>
-              ))}
-            </div>
-          </div>
+          </CollapsibleSection>
                     {/* Allocation bar */}
-          <CollapsibleSection title="Income Allocation" icon="🧮" accentColor={T.muted} defaultOpen={true}>
+          <CollapsibleSection title="Income Allocation" icon="🧮" storeKey="ov-alloc" accentColor={T.muted} defaultOpen={true}>
           <div style={{padding:"14px 18px"}}>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:4}}>
               <Lbl>Monthly Allocation — {fmt(income)} total</Lbl>
@@ -3013,7 +3325,7 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
           </CollapsibleSection>
 
           {/* P&L statement */}
-          <CollapsibleSection title="Monthly P&L" icon="📋" accentColor={T.accent} defaultOpen={false} badge={(rem>=0?"+":"")+fmt(rem)}>
+          <CollapsibleSection title="Monthly P&L" icon="📋" storeKey="ov-pl" accentColor={T.accent} defaultOpen={false} badge={(rem>=0?"+":"")+fmt(rem)}>
             <div>
               {[
                 {label:"Net Salary /mo",        val:netSalary,    color:T.green,   dim:false},
@@ -3034,7 +3346,7 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
 
           {/* Dynamic Overview Insights */}
           {income>0&&(
-            <CollapsibleSection title="Financial Insights" icon="💡" accentColor={T.purple} defaultOpen={true}>
+            <CollapsibleSection title="Financial Insights" icon="💡" accentColor={T.purple} defaultOpen={true} storeKey="ov-insights">
             <div style={{padding:"14px 18px 18px"}}>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                 {[
@@ -3071,6 +3383,13 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
             targetNetWorth={targetNetWorth} weightedReturn={weightedAssetReturn} />
         )}
 
+        {/* ══ LIABILITIES ══ */}
+        {tab==="liabilities"&&(
+          <LiabilitiesTab liabilities={liabilities} setLiabilities={setLiabilities}
+            assets={assets} openingBalance={openingBalance} income={income} expenses={expenses}
+            fmt={fmt} fmtK={fmtK} />
+        )}
+
         {/* ══ CASHFLOW ══ */}
         {tab==="cashflow"&&(
           <CashflowTab cashflow={cashflow} setCashflow={setCashflow}
@@ -3085,11 +3404,11 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
             <StatCard label="Bonus /mo (avg)"  value={inclBonus?fmt(netBonus):"Excluded"} color={inclBonus?T.amber:T.muted} sub={cfg.symbol+(annualBonus/1000).toFixed(0)+"k gross"} />
             <StatCard label="Total Net Income" value={fmt(income)} color={T.text} sub="All active sources" />
           </div>
-          <CollapsibleSection title="Income Sources" icon="💰" accentColor={T.green} defaultOpen={true}>
+          <CollapsibleSection title="Income Sources" icon="💰" accentColor={T.green} storeKey="inc-sources" defaultOpen={true}>
             <IncomeTable items={incomeItems} setCustomIncome={setCustomIncome} inclBonus={inclBonus} setInclBonus={setInclBonus} totalIncome={income} fmt={fmt} />
           </CollapsibleSection>
           {income>0&&(
-            <CollapsibleSection title="Income Insights" icon="💡" accentColor={T.purple} defaultOpen={true}>
+            <CollapsibleSection title="Income Insights" icon="💡" storeKey="inc-insights" accentColor={T.purple} defaultOpen={true}>
               <div style={{padding:"14px 18px 18px"}}>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                   {[
@@ -3130,14 +3449,14 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
             <StatCard label="Variable Expenses" value={fmt(variable)} color={T.red+"88"} sub={pct(income>0?(variable/income)*100:0)+" of income"} />
             <StatCard label="Total Outgoings"   value={fmt(expenses)} color={T.red}      sub={pct(income>0?(expenses/income)*100:0)+" of income"} />
           </div>
-          <CollapsibleSection title="Fixed Expenses" icon="🔒" accentColor={T.red} badge={fmt(fixed)}>
-            <EditableTable title="Fixed Expenses" icon="🔒" items={fixedItems} setItems={setFixedItems} accentColor={T.red} sliderMax={8000} />
+          <CollapsibleSection title="Fixed Expenses" icon="🔒" accentColor={T.red} badge={fmt(fixed)} storeKey="exp-fixed">
+            <EditableTable title="Fixed Expenses" icon="🔒" items={fixedItems} setItems={setFixedItems} accentColor={T.red} sliderMax={8000} bare />
           </CollapsibleSection>
-          <CollapsibleSection title="Variable Expenses" icon="🔄" accentColor={T.blue} badge={fmt(variable)}>
-            <EditableTable title="Variable Expenses" icon="🔄" items={varItems} setItems={setVarItems} accentColor={T.blue} sliderMax={3000} />
+          <CollapsibleSection title="Variable Expenses" icon="🔄" accentColor={T.blue} badge={fmt(variable)} storeKey="exp-var">
+            <EditableTable title="Variable Expenses" icon="🔄" items={varItems} setItems={setVarItems} accentColor={T.blue} sliderMax={3000} bare />
           </CollapsibleSection>
           {income>0&&(
-            <CollapsibleSection title="Expense Insights" icon="💡" accentColor={T.purple} defaultOpen={true}>
+            <CollapsibleSection title="Expense Insights" icon="💡" accentColor={T.purple} defaultOpen={true} storeKey="exp-insights">
             <div style={{padding:"14px 18px 18px"}}>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                 {[
@@ -3168,58 +3487,19 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
             <StatCard label="Annual Savings"    value={fmt(savings*12)}          color={T.green} sub="Excluding bonus" />
             <StatCard label="With Bonus (net)"  value={fmt(savings*12+netBonus*12)} color={T.amber} sub="Total annual capacity" />
           </div>
-          <SavingsSection buckets={savBuckets} setBuckets={setSavBuckets} />
+          <CollapsibleSection title="Savings Buckets" icon="💰" accentColor={T.green} storeKey="sav-buckets" defaultOpen={true} badge={fmt(savings)}>
+            <SavingsSection buckets={savBuckets} setBuckets={setSavBuckets} />
+          </CollapsibleSection>
 
           {/* ── SAVINGS GROWTH CHART ──────────────────────────────────────────
               Shows projected savings growth per bucket over 5 years.
               Each bucket is a stacked coloured layer — total height = cumulative savings.
               Dynamic Y-axis with "nice" intervals just like the cashflow chart.
           ───────────────────────────────────────────────────────────────────── */}
-          {savings>0&&(()=>{
-            // Build 10 data points: 6m, 1y, 18m, 2y, 3y, 4y, 5y + monthly for first year
-            const SAV_POINTS = [1,2,3,4,6,9,12,18,24,36,48,60]; // months
-            const activeBuckets = savBuckets.filter(b=>!b.excluded);
-            // For each time point: compute each bucket's future value using simple savings accumulation
-            // (not compound interest — just months × amount; compound is in Projections tab)
-            const chartData = SAV_POINTS.map(mo=>{
-              const bucketVals = activeBuckets.map(b=>{
-                const r = (Number(b.annualReturn)||7)/100;
-                return Math.round(fv(b.amount, r, mo/12));
-              });
-              return { mo, buckets:bucketVals, total:bucketVals.reduce((s,v)=>s+v,0) };
-            });
-            const yMax2    = Math.max(...chartData.map(d=>d.total),1);
-            const yTicks2  = niceYTicks(yMax2, 5);
-            const yRange2  = Math.max(yTicks2[yTicks2.length-1],1);
-            const CHART_H2 = 180;
-            const YAXIS_W2 = 52;
-            const formatMo = mo=>mo<12?mo+"m":mo===12?"1yr":mo<24?(mo/12).toFixed(1)+"yr":(mo/12)+"yr";
-            return (
-              <div style={{background:T.card,border:"1px solid "+T.border,borderRadius:14,padding:"20px 22px",marginBottom:14}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
-                  <div>
-                    <Lbl color={T.green}>Savings Growth by Bucket</Lbl>
-                    <div style={{fontSize:10,color:T.muted,fontFamily:"monospace"}}>Cumulative total · hover for breakdown</div>
-                  </div>
-                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                    {activeBuckets.map((b,i)=>(
-                      <div key={b.id} style={{display:"flex",alignItems:"center",gap:4}}>
-                        <div style={{width:8,height:8,borderRadius:2,background:b.color||SAV_COLORS[i%SAV_COLORS.length]}} />
-                        <span style={{fontSize:9,color:T.muted,fontFamily:"monospace"}}>{b.name}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                {/* Chart: Y-axis + bars */}
-                <SavingsChart
-                  chartData={chartData} activeBuckets={activeBuckets}
-                  yTicks={yTicks2} yRange={yRange2} CHART_H={CHART_H2} YAXIS_W={YAXIS_W2}
-                  formatMo={formatMo} fmt={fmt} fmtK={fmtK} />
-              </div>
-            );
-          })()}
+
+          {savBuckets.filter(b=>!b.excluded).length>0&&<SavingsGrowthChart buckets={savBuckets} fmt={fmt} fmtK={fmtK} />}
           {income>0&&(
-            <CollapsibleSection title="Savings Insights" icon="💡" accentColor={T.purple} defaultOpen={true}>
+            <CollapsibleSection title="Savings Insights" icon="💡" storeKey="sav-insights" accentColor={T.purple} defaultOpen={true}>
             <div style={{padding:"14px 18px 18px"}}>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                 {[
@@ -3269,7 +3549,7 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
             </div>
           </div>
 
-          <CollapsibleSection title="Allocation Breakdown" icon="🥧" accentColor={T.green} defaultOpen={false}>
+          <CollapsibleSection title="Allocation Breakdown" icon="🥧" storeKey="sav-alloc" accentColor={T.green} defaultOpen={false}>
           <div style={{padding:"16px 18px"}}>
             <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:10}}>
               {savBuckets.filter(b=>!b.excluded).map((b,idx)=>{
@@ -3312,13 +3592,15 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
               </div>
             </div>
           </div>
-          <ProjChart monthlySavings={savings} netBonus={netBonus} includeBonus={inclBonus} intervalMode={projInterval} fmtK={fmtK} targetNetWorth={targetNetWorth} weightedReturn={weightedReturn} initialAssets={totalAssets} />
-          <div style={cardS}>
-            <div style={{padding:"12px 18px",background:T.surface,borderBottom:"1px solid "+T.border,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
-              <Lbl color={T.green}>Detailed Projections — {fmt(savings)}/mo @ {pct(weightedReturn)} return</Lbl>
-              <Pill label={INTERVAL_MODES.find(m=>m.id===projInterval)?.label+" view"||""} color={T.green} />
-            </div>
+          <CollapsibleSection title="Net Worth Projection" icon="📊" accentColor={T.blue} storeKey="proj-chart" defaultOpen={true}>
+            <ProjChart monthlySavings={savings} netBonus={netBonus} includeBonus={inclBonus} intervalMode={projInterval} fmtK={fmtK} targetNetWorth={targetNetWorth} weightedReturn={weightedReturn} initialAssets={totalAssets} />
+          </CollapsibleSection>
+          <CollapsibleSection title="Detailed Projections" icon="📋" accentColor={T.green} storeKey="proj-table" defaultOpen={false}
+            badge={INTERVAL_MODES.find(m=>m.id===projInterval)?.label}>
             <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+              <div style={{padding:"10px 18px 8px",borderBottom:"1px solid "+T.border}}>
+                <span style={{fontSize:11,color:T.muted,fontFamily:"monospace"}}>{fmt(savings)}/mo @ {pct(weightedReturn)} return</span>
+              </div>
               <table style={{width:"100%",minWidth:500,borderCollapse:"collapse",fontSize:11,fontFamily:"monospace"}}>
                 <thead>
                   <tr>{["Period","Savings","Bonus","Assets","Total","vs Target"].map(h=>(
@@ -3326,12 +3608,13 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
                   ))}</tr>
                 </thead>
                 <tbody>
-                  {(INTERVAL_MODES.find(m=>m.id===projInterval)||INTERVAL_MODES[2]).steps.map((y,i)=>{
+                  {(()=>{const pm=INTERVAL_MODES.find(m=>m.id===projInterval)||INTERVAL_MODES[2]; return pm.steps.map((y,i)=>{
                     const row=calcProjRow(y,savings,netBonus,inclBonus,weightedReturn,totalAssets);
                     const gap=row.total-targetNetWorth,hit=row.total>=targetNetWorth;
+                    const modeFmt=pm;
                     return (
                       <tr key={y} style={{background:i%2===0?T.surface:"transparent",borderBottom:"1px solid "+T.border}}>
-                        <td style={{padding:"10px 12px",color:hit?T.amber:T.text,fontWeight:hit?700:400,whiteSpace:"nowrap"}}>{INTERVAL_MODES.find(m=>m.id===projInterval)?.fmt(y)||y+"yr"}{hit?" ✓":""}</td>
+                        <td style={{padding:"10px 12px",color:hit?T.amber:T.text,fontWeight:hit?700:400,whiteSpace:"nowrap"}}>{modeFmt?.fmt(y)||y+"yr"}{hit?" ✓":""}</td>
                         <td style={{padding:"10px 12px",textAlign:"right",color:T.blue}}>{fmtK(row.inv)}</td>
                         <td style={{padding:"10px 12px",textAlign:"right",color:inclBonus?T.amber:T.muted}}>{inclBonus?fmtK(row.bon):"—"}</td>
                         <td style={{padding:"10px 12px",textAlign:"right",color:T.purple}}>{row.existingAssets>0?fmtK(row.existingAssets):fmtK(row.car)}</td>
@@ -3339,11 +3622,11 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
                         <td style={{padding:"10px 12px",textAlign:"right",color:hit?T.green:T.red,fontWeight:600}}>{gap>=0?"+":""}{fmtK(gap)}</td>
                       </tr>
                     );
-                  })}
+                  })})()}
                 </tbody>
               </table>
             </div>
-          </div>
+          </CollapsibleSection>
           {/* ── PROJECTIONS INSIGHTS ── */}
           {(()=>{
             const activeMode=INTERVAL_MODES.find(m=>m.id===projInterval)||INTERVAL_MODES[2];
@@ -3363,7 +3646,7 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
                 :{icon:"🎁",color:T.muted,text:`If you include an annual bonus, you can model its compounding impact in the Projections chart. Even modest bonus contributions compound significantly over long time horizons.`},
             ];
             return (
-              <CollapsibleSection title="Projection Insights" icon="💡" accentColor={T.purple} defaultOpen={true}>
+              <CollapsibleSection title="Projection Insights" icon="💡" accentColor={T.purple} defaultOpen={true} storeKey="proj-insights">
                 <div style={{padding:"14px 18px 18px"}}>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                     {ins.map((i,idx)=>(
@@ -3381,10 +3664,10 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
 
         {/* ══ ANALYSIS ══ */}
         {tab==="analysis"&&(<>
-          <CollapsibleSection title="Financial Health Score" icon="🏥" accentColor={T.purple} defaultOpen={true}>
+          <CollapsibleSection title="Financial Health Score" icon="🏥" storeKey="ana-health" accentColor={T.purple} defaultOpen={true}>
             <div style={{padding:"0 0 4px"}}><HealthScore savingsRate={sRate} housingPct={housing} totalExpenses={expenses} netIncome={income} /></div>
           </CollapsibleSection>
-          <CollapsibleSection title="Cash Runway Analysis" icon="🛡️" accentColor={runway.color} defaultOpen={false}>
+          <CollapsibleSection title="Cash Runway Analysis" icon="🛡️" accentColor={runway.color} storeKey="ana-runway" defaultOpen={false}>
           <div style={{padding:"16px 18px"}}>
             <div className="fc-analysis" style={{marginTop:12}}>
               {[
@@ -3404,7 +3687,7 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
             </div>
           </div>
           </CollapsibleSection>
-          <CollapsibleSection title="Objective Assessment" icon="📋" accentColor={T.purple} defaultOpen={true}>
+          <CollapsibleSection title="Objective Assessment" icon="📋" accentColor={T.purple} defaultOpen={true} storeKey="ana-obj">
             <div>
               {[
                 {area:"Housing",          color:rentAmt>income*.35?T.red:rentAmt>income*.28?T.amber:T.green, verdict:rentAmt>income*.35?"⚠ Elevated":rentAmt>income*.28?"~ Borderline":"✓ Reasonable", detail:"At "+pct(housing)+" of net income. "+cfg.taxYearNote},
@@ -3456,9 +3739,11 @@ function Dashboard({ user, profile, initialData, onSignOut, themeId, onThemeChan
           housingPct:income>0?Math.round((fixedItems.find(f=>f.name?.toLowerCase().includes("rent")||f.name?.toLowerCase().includes("mortgage"))?.amount||0)/income*100):0,
           totalAssets:Math.round(totalAssets),
           weightedAssetReturn:Math.round(weightedAssetReturn*10)/10,
-          netWorthEstimate:Math.round(totalAssets+openingBalance),
+          totalLiabilities:Math.round(totalLiabilities),
+          netWorth:Math.round(netWorth),
           netWorthProjection30yr:Math.round((totalAssets+openingBalance)*Math.pow(1+weightedAssetReturn/100,30)+savings*12*((Math.pow(1+weightedAssetReturn/100,30)-1)/(weightedAssetReturn/100||0.07))),
           assets:(assets||[]).filter(a=>!a.excluded).map(a=>({name:a.name,category:a.category,value:a.value,annualReturn:a.annualReturn})),
+          liabilities:(liabilities||[]).filter(l=>!l.excluded).map(l=>({name:l.name,category:l.category,balance:l.balance,interestRate:l.interestRate,monthlyPayment:l.monthlyPayment})),
           fixedExpenses:fixedItems.map(i=>({name:i.name,amount:i.amount})),
           variableExpenses:varItems.map(i=>({name:i.name,amount:i.amount})),
           savingsBuckets:savBuckets.map(i=>({name:i.name,amount:i.amount,annualReturn:i.annualReturn})),
@@ -4038,6 +4323,7 @@ export default function App() {
         if(!data.dashboard.targetNetWorth) data.dashboard.targetNetWorth=DEFAULT_TARGET_NW;
         if(!data.dashboard.studentLoan) data.dashboard.studentLoan={enabled:false,plan:"plan2",postgrad:false};
         if(!data.dashboard.assets) data.dashboard.assets=DEFAULT_ASSETS();
+        if(!data.dashboard.liabilities) data.dashboard.liabilities=DEFAULT_LIABILITIES();
         setProfile(data.profile);setDashData(data.dashboard);setScreen("dashboard");
       } else setScreen("onboarding");
     }catch{setScreen("onboarding");}
